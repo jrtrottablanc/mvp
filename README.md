@@ -1,4 +1,5 @@
 # MVPGermline
+```
 #-------------------------------#
 # Pipeline usage                #
 #-------------------------------#
@@ -82,3 +83,4 @@ sampleSheet=/scratch_isilon/groups/dat/apps/MVPGermline/20260109/TEST/TEST_GRCh3
 pipeConf=hsapiens.GRCh38.conf
 # Candidate genes configuration (found at /scratch_isilon/groups/dat/apps/MVPGermline/Candidate_Genes)
 candidateGenes=ACMG.snpEff_v5_2.genes.GRCh38.mane.1.2.refseq.conf
+```
