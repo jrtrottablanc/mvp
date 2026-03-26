@@ -1,0 +1,165 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+module purge
+module load Perl/5.34.1-GCCcore-11.3.0
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf
+
+if [ "${roiBed}" != "NA" ]; then
+	expType="target"
+else
+	expType="wgs"
+fi
+
+cn="1,10,15,20,30,50,100,500,1000"
+
+# mappability
+# genome 
+echo "# INFO - Generating genome mappability ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools intersect \
+-a ${genomeBed} \
+-b ${mappaBed} \
+> genome.map.bed
+if [ $? != 0 ]; then echo "ERROR : mosdepth [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+# roi
+if [ "${expType}" = "target" ]; then
+	echo "# INFO - Generating roi mappability ..." >&2
+	apptainer run --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools intersect \
+	-a ${roiBed} \
+	-b ${mappaBed} \
+	> roi.map.bed
+	if [ $? != 0 ]; then echo "ERROR : mosdepth [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+fi
+
+# seed coverage
+echo "# INFO - Computing seed coverage ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${mosdepthCont} mosdepth \
+--threads [% cpu %] \
+--fasta ${fasta} \
+--mapq 20 \
+[% levelId %] \
+[% input %]
+if [ $? != 0 ]; then echo "ERROR : mosdepth [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# genome coverage
+echo "# INFO - Computing genome coverage ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools intersect \
+-a [% levelId %].per-base.bed.gz \
+-b genome.map.bed \
+> [% levelId %].genome.per-base.bed
+if [ $? != 0 ]; then echo "ERROR : mosdepth [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# roi coverage
+if [ "${expType}" = "target" ]; then
+	echo "# INFO - Computing roi coverage ..." >&2
+	apptainer run --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools intersect \
+	-a [% levelId %].per-base.bed.gz \
+	-b roi.map.bed \
+	> [% levelId %].roi.per-base.bed
+fi
+if [ $? != 0 ]; then echo "ERROR : mosdepth [step#5] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# hist
+echo "# INFO - Generating histogram ..." >&2
+${funcDir}/getCovHist.pl \
+-gr genome.map.bed \
+-gd [% levelId %].genome.per-base.bed \
+-tr roi.map.bed \
+-td [% levelId %].roi.per-base.bed \
+-x ${expType} \
+-p [% levelId %] \
+-rg sample \
+-o [% levelId %].hist
+if [ $? != 0 ]; then echo "ERROR : mosdepth [step#6] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# compute metrics
+echo "# INFO - Computing metrics ..." >&2
+${funcDir}/getCovMetrics.pl \
+-i [% levelId %].hist \
+-x ${expType} \
+-p [% levelId %] \
+-rg sample \
+-cn ${cn} \
+-m 150 \
+-ct COUNT_FRAGMENTS \
+-rd T \
+-bq 0 \
+-mq 20 \
+-o [% levelId %].coverage.metrics
+if [ $? != 0 ]; then echo "ERROR : mosdepth [step#7] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# MANE
+if [ "${maneBed}" != "NA" ]; then
+
+	export MOSDEPTH_Q0=NO_COVERAGE   # 0 -- defined by the arguments to --quantize
+	export MOSDEPTH_Q1=LOW_COVERAGE  # 1..9
+	export MOSDEPTH_Q2=CALLABLE      # 10..149
+	export MOSDEPTH_Q3=HIGH_COVERAGE # 150 ...
+
+	echo "# INFO - Computing MANE coverage ..." >&2
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${mosdepthCont} mosdepth \
+	--threads [% cpu %] \
+	--fasta ${fasta} \
+	--no-per-base \
+	--by ${maneBed} \
+	--mapq 20 \
+	--quantize 0:1:10:150: \
+	--thresholds ${cn} \
+	[% levelId %].${manePrefix} \
+	[% input %]
+	if [ $? != 0 ]; then echo "ERROR : mosdepth [step#8] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	echo "# INFO - Merging MANE coverage ..." >&2
+	gunzip [% levelId %].${manePrefix}.regions.bed.gz
+	gunzip [% levelId %].${manePrefix}.thresholds.bed.gz
+	paste [% levelId %].${manePrefix}.regions.bed <(grep -v "^#" [% levelId %].${manePrefix}.thresholds.bed) | cut -f 1-5,10- > [% levelId %].${manePrefix}.metrics.bed
+	if [ $? != 0 ]; then echo "ERROR : mosdepth [step#9] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	echo "# INFO - Computing MANE metrics ..." >&2
+	${funcDir}/getMANEmetrics.pl \
+	-i [% levelId %].${manePrefix}.metrics.bed \
+	-cn ${cn} \
+	-o [% levelId %].${manePrefix}.metrics.tsv
+	if [ $? != 0 ]; then echo "ERROR : mosdepth [step#10] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	echo "# INFO - Generating MANE low coverage BED ..." >&2
+	zgrep "NO_COVERAGE\|LOW_COVERAGE" [% levelId %].${manePrefix}.quantized.bed.gz | \
+	apptainer run --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools sort | \
+	apptainer run --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools merge | \
+	apptainer run --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > [% levelId %].${manePrefix}.covlt10.bed.gz
+	if [ $? != 0 ]; then echo "ERROR : mosdepth [step#11] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	apptainer run --bind ${bindDir} ${contDir}/${htslibCont} tabix -p bed [% levelId %].${manePrefix}.covlt10.bed.gz
+	if [ $? != 0 ]; then echo "ERROR : mosdepth [step#12] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	#echo "# INFO - Filtering by candidate genes" >&2
+	#if [ $? != 0 ]; then echo "ERROR : mosdepth [step#13] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+fi
+
+printf END >&2; uptime >&2
+date >&2
+
+
+

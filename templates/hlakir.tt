@@ -1,0 +1,82 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+echo "# INFO - Converting BAM to FASTQ ..." >&2
+module load picard/2.26.10-Java-15 >&2
+java -jar $EBROOTPICARD/picard.jar SamToFastq \
+I=[% input %] \
+FASTQ=[% levelId %]_1.fastq.gz \
+SECOND_END_FASTQ=[% levelId %]_2.fastq.gz \
+UNPAIRED_FASTQ=[% levelId %]_Unpaired.fastq.gz \
+VALIDATION_STRINGENCY=LENIENT
+if [ $? != 0 ]; then echo "ERROR : hlakir [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi 
+module purge >&2
+
+echo "# INFO - Submitting T1K for HLA ..." >&2
+preset="hla-wgs"
+jobLab="[% levelId %].${preset}"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${t1k_qos} \
+--define cpu=${t1k_cpu} \
+--define mem=${t1k_mem} \
+--define time="${t1k_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define levelId=[% levelId %] \
+--define preset=${preset} \
+--define fasta=/scratch_isilon/groups/dat/apps/T1K/hlaidx/hlaidx_dna_seq.fa \
+${ttDir}/${t1k_tt} > ${jobCmd}
+t1khlaJobID=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${t1khlaJobID}" | tee -a ${jobLog} >&2
+
+echo "# INFO - Submitting T1K for KIR ..." >&2
+preset="kir-wgs"
+jobLab="[% levelId %].${preset}"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${t1k_qos} \
+--define cpu=${t1k_cpu} \
+--define mem=${t1k_mem} \
+--define time="${t1k_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define levelId=[% levelId %] \
+--define preset=${preset} \
+--define fasta=/scratch_isilon/groups/dat/apps/T1K/kiridx/kiridx_dna_seq.fa \
+${ttDir}/${t1k_tt} > ${jobCmd}
+t1kkirJobID=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${t1kkirJobID}" | tee -a ${jobLog} >&2
+
+printf END >&2; uptime >&2
+date >&2

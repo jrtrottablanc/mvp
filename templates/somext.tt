@@ -1,0 +1,41 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# somalier extract
+echo "# INFO - Running somalier extract ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${somalierCont} somalier extract \
+-d [% stepDir %]/ \
+--sites ${somalierSites} \
+-f ${fasta} \
+[% input %]
+if [ $? != 0 ]; then echo "ERROR : somext [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# somalier extract
+echo "# INFO - Copying somalier extract into centralized folder ..." >&2
+mkdir -p ${somalierPath}/${analysisId}
+cp -v [% sample %].somalier ${somalierPath}/${analysisId}/.
+
+printf END >&2; uptime >&2
+date >&2

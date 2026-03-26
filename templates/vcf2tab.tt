@@ -1,0 +1,53 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# vcf2tabular
+echo "# INFO - Converting to Excel ..." >&2
+cntvar=$(zgrep -v "^#" [% input %] | wc -l)
+echo "${cntvar}" > [% input %].cntvar
+if [ "${cntvar}" -le "1000000" ]; then
+	apptainer exec --no-home --bind ${bindDir} ${contDir}/${vcf2tabCont} vcf2tabular \
+	-i [% input %] \
+	-o [% input %].full.xlsx \
+	-format GT,AD,DP,GQ,VAF \
+	-tmpDir '/scratch_isilon/groups/dat/apps/MVPGermline/tmpdir/'
+	if [ $? != 0 ]; then echo "ERROR : vcf2tab [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+else
+	echo "# INFO - More then 1M variants into VCF, skipping Excel conversion ..." >&2
+fi
+
+echo "# INFO - Converting to TSV ..." >&2
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${vcf2tabCont} vcf2tabular \
+-oType tab \
+-i [% input %] \
+-o [% input %].full.tsv \
+-format GT,AD,DP,GQ,VAF \
+-tmpDir '/scratch_isilon/groups/dat/apps/MVPGermline/tmpdir/'
+if [ $? != 0 ]; then echo "ERROR : vcf2tab [step#2.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+gzip [% input %].full.tsv
+if [ $? != 0 ]; then echo "ERROR : vcf2tab [step#2.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

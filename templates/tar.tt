@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% chdir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+echo "# INFO - TAR details" >> [% tarLog %]
+
+echo -e "# INFO - Folder size :" >> [% tarLog %]
+du -sh [% analysisId %]/ >> [% tarLog %]
+
+echo "# INFO - Folder tree :" >> [% tarLog %]
+[% pipeDir %]/func/tree [% analysisId %] >> [% tarLog %]
+
+echo "# INFO - TARing analysis folder [[% analysisId %]]" >&2
+tar czf [% analysisId %].mvp.tar.gz [% analysisId %]
+
+echo -e "# INFO - TAR size :" >> [% tarLog %]
+du -sh [% analysisId %].mvp.tar.gz >> [% tarLog %]
+
+printf END >&2; uptime >&2
+date >&2

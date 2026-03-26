@@ -1,0 +1,59 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# somalier relate
+echo "# INFO - Running somalier relate ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${somalierCont} somalier relate \
+--infer \
+--ped [% pedfile %] \
+[% stepDir %]/*.somalier \
+-o [% stepDir %]/[% levelId %]_inferred
+if [ $? != 0 ]; then echo "ERROR : somrel [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# relatedness
+echo "# INFO - Computing relatedness ..." >&2
+module purge >&2
+module load Python/3.9.6-GCCcore-11.2.0 >&2
+export R_LIBS_USER=/scratch_isilon/groups/dat/lib/R/4.2 >&2
+module load R/4.2.0-foss-2021b >&2
+module load R-bundle-Bioconductor/3.15-foss-2021b-R-4.2.0 >&2
+Rscript \
+/scratch_isilon/groups/dat/apps/RELATEDNESSTOOLS/1.0/RelatednessHeatmapSomalier.R \
+[% stepDir %]/ \
+[% stepDir %]/[% levelId %]_inferred.pairs.tsv \
+[% levelId %]
+if [ $? != 0 ]; then echo "ERROR : somrel [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# ancestry
+echo "# INFO - Running somalier ancestry ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${somalierCont} somalier ancestry \
+--labels /scratch_isilon/groups/dat/apps/SOMALIER/0.2.15/ancestry-labels-1kg.tsv \
+/scratch_isilon/groups/dat/apps/SOMALIER/0.2.15/1kg-somalier/*.somalier \
+++ [% stepDir %]/*.somalier \
+-o [% stepDir %]/[% levelId %]_ancestry
+if [ $? != 0 ]; then echo "ERROR : somrel [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

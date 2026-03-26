@@ -1,0 +1,121 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf
+
+# lcassembly
+if [ "${pypgxDb}" = "GRCh37" ]; then
+	lcassembly=grch37
+else
+	lcassembly=grch38
+fi
+
+# ROI and pypgxApp
+bed=''
+pypgxApp='WGS'
+if [ "[% app %]" != "WGS" ]; then
+	pypgxApp='Targeted'
+	bed="--bed ${roiBed}"
+fi
+
+# tmp dir
+MPLCONFIGDIR=/scratch_isilon/groups/dat/apps/MVPGermline/tmpdir
+export PYPGX_BUNDLE=$PWD  
+
+# input vcf
+echo "# INFO - Creating input VCF ..." >&2
+apptainer exec --no-home --env "MPLCONFIGDIR=$MPLCONFIGDIR" --bind ${bindDir} ${contDir}/${pypgxCont} pypgx create-input-vcf \
+--assembly ${pypgxDb} \
+[% levelId %].${pypgxDb}-variants.vcf.gz \
+${fasta} \
+[% input %]
+if [ $? != 0 ]; then echo "ERROR : pypgx [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi 
+
+# coverage
+echo "# INFO - Preparing depth of coverage ..." >&2
+apptainer exec --no-home --env "MPLCONFIGDIR=$MPLCONFIGDIR" --bind ${bindDir} ${contDir}/${pypgxCont} pypgx prepare-depth-of-coverage \
+--assembly ${pypgxDb} ${bed} \
+--genes GSTT1 \
+--exclude \
+[% levelId %].${pypgxDb}-depth-of-coverage.zip \
+[% input %]
+if [ $? != 0 ]; then echo "ERROR : pypgx [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# ctrl stats
+echo "# INFO - Computing control statistics ..." >&2
+apptainer exec --no-home --env "MPLCONFIGDIR=$MPLCONFIGDIR" --bind ${bindDir} ${contDir}/${pypgxCont} pypgx compute-control-statistics \
+--assembly ${pypgxDb} ${bed} \
+VDR \
+[% levelId %].${pypgxDb}-control-statistics-VDR.zip \
+[% input %]
+if [ $? != 0 ]; then echo "ERROR : pypgx [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# genes with star alleles
+# originally CYP2A6 CYP2B6 CYP2D6 CYP2E1 CYP4F2 G6PD GSTM1 GSTT1 SLC22A2 SULT1A1 UGT1A4 UGT2B15 UGT2B17
+# but GSTT1 excluded because it requires mapping on chr22_KI270879v1_alt
+echo "# INFO - Running ngs pipeline for genes with star alleles ..." >&2
+sgeneList="CYP2A6 CYP2B6 CYP2D6 CYP2E1 CYP4F2 G6PD GSTM1 SLC22A2 SULT1A1 UGT1A4 UGT2B15 UGT2B17"
+for sgene in ${sgeneList}; do
+	apptainer exec --no-home --env "MPLCONFIGDIR=$MPLCONFIGDIR" --bind ${bindDir} ${contDir}/${pypgxCont} pypgx run-ngs-pipeline \
+	${sgene} \
+	${lcassembly}-${sgene}-pipeline \
+	--platform ${pypgxApp} \
+	--variants [% levelId %].${pypgxDb}-variants.vcf.gz \
+	--depth-of-coverage [% levelId %].${pypgxDb}-depth-of-coverage.zip \
+	--control-statistics [% levelId %].${pypgxDb}-control-statistics-VDR.zip \
+	--panel ${pypgxBundle}/1kgp/${pypgxDb}/${sgene}.vcf.gz \
+	--cnv-caller ${pypgxBundle}/cnv/${pypgxDb}/${sgene}.zip \
+	--assembly ${pypgxDb}
+	if [ $? != 0 ]; then echo "ERROR : pypgx [step#4.${sgene}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+done
+
+# genes without star alleles
+nsgeneList="ABCB1 ABCG2 CACNA1S CFTR CYP1A1 CYP1A2 CYP1B1 CYP2A13 CYP2C8 CYP2C9 CYP2C19 CYP2F1 CYP2J2 CYP2R1 CYP2S1 CYP2W1 CYP3A4 CYP3A5 CYP3A7 CYP3A43 CYP4A11 CYP4A22 CYP4B1 CYP17A1 CYP19A1 CYP26A1 DPYD F5 GSTP1 IFNL3 NAT1 NAT2 NUDT15 POR PTGIS RYR1 SLC15A2 SLCO1B1 SLCO1B3 SLCO2B1 TBXAS1 TPMT UGT1A1 UGT2B7 VKORC1 XPC"
+echo "# INFO - Running ngs pipeline for genes without star alleles ..." >&2
+for nsgene in ${nsgeneList}; do
+	apptainer exec --no-home --env "MPLCONFIGDIR=$MPLCONFIGDIR" --bind ${bindDir} ${contDir}/${pypgxCont} pypgx run-ngs-pipeline \
+	${nsgene} \
+	${lcassembly}-${nsgene}-pipeline \
+	--platform ${pypgxApp} \
+	--variants [% levelId %].${pypgxDb}-variants.vcf.gz \
+	--depth-of-coverage [% levelId %].${pypgxDb}-depth-of-coverage.zip \
+	--control-statistics [% levelId %].${pypgxDb}-control-statistics-VDR.zip \
+	--panel ${pypgxBundle}/1kgp/${pypgxDb}/${nsgene}.vcf.gz \
+	--cnv-caller ${pypgxBundle}/cnv/${pypgxDb}/${sgene}.zip \
+	--assembly ${pypgxDb}
+	if [ $? != 0 ]; then echo "ERROR : pypgx [step#5.${nsgene}] [${cmdFile}]" >> ${errLog}; exit 1; fi 
+done
+
+# gather results of all genes
+echo "# INFO - Gathering results of all genes ..." >&2
+ff=$(ls grch*pipeline/*results.zip | head -1)
+zcat -q $ff | sed -n '1,1p' | awk '{OFS="\t"}{print $0, "Gene"}' > [% levelId %].pypgx.tsv
+for rf in grch*pipeline/*results.zip; do
+	gene=$(echo $rf | cut -d'-' -f2)
+	unzip -p $rf "$(unzip -Z1 $rf | grep 'data.tsv$')" | sed -n '2,2p' | awk -v GENE=${gene} '{OFS="\t"}{print $0, GENE}'
+done >> [% levelId %].pypgx.tsv
+if [ $? != 0 ]; then echo "ERROR : pypgx [step#6] [${cmdFile}]" >> ${errLog}; exit 1; fi 
+
+printf END >&2; uptime >&2
+date >&2

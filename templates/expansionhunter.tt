@@ -1,0 +1,71 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# expansion hunter
+echo "# INFO - Running ExpansionHunter ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${stripyCont} ExpansionHunter \
+--threads [% cpu %] \
+--reads [% input %] \
+--reference ${fasta} \
+--variant-catalog [% ehCatalog %] \
+--output-prefix [% levelId %].[% ehSuffix %]
+if [ $? != 0 ]; then echo "ERROR : expansionhunter [% ehSuffix %] [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi 
+
+# VCF compress
+echo "# INFO - Compressing VCF ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -f [% levelId %].[% ehSuffix %].vcf
+if [ $? != 0 ]; then echo "ERROR : expansionhunter [% ehSuffix %] [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF indexes
+echo "# INFO - Creating VCF indexes ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -f -p vcf [% levelId %].[% ehSuffix %].vcf.gz
+if [ $? != 0 ]; then echo "ERROR : expansionhunter [% ehSuffix %] [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF integrity
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% ehSuffix %].vcf.gz >&2
+if [ $? != 0 ]; then echo "ERROR : expansionhunter [% ehSuffix %] [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# tsv output header
+echo "# INFO - Preparing output header ..." >&2
+echo -e "CHROM\tPOS\tREF\tALT\tFILTER\tINFO_END\tINFO_REF\tINFO_REPID\tINFO_RL\tINFO_RU\tINFO_SVTYPE\tINFO_VARID\tADFL\tADIR\tADSP\tGT\tLC\tREPCI\tREPCN\tSO\tSAMPLE\tANALYSISID" > [% levelId %].[% ehSuffix %].tsv
+if [ $? != 0 ]; then echo "ERROR : expansionhunter [% ehSuffix %] [step#5] [${cmdFile}]" >> ${errLog}; exit 1; fi  
+
+# bcftools
+zgrep -v "^#" [% levelId %].[% ehSuffix %].vcf.gz | wc -l > [% levelId %].[% ehSuffix %].vcf.gz.cntvar
+cntvar=$(cat [% levelId %].[% ehSuffix %].vcf.gz.cntvar)
+if [ "$cntvar" != "0" ]; then
+	echo "# INFO - Running bcftools query ..." >&2
+	apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools query \
+	-f "%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t%INFO/END\t%INFO/REF\t%INFO/REPID\t%INFO/RL\t%INFO/RU\t%INFO/SVTYPE\t%INFO/VARID[\t%ADFL\t%ADIR\t%ADSP\t%GT\t%LC\t%REPCI\t%REPCN\t%SO\t%SAMPLE]\t[% analysisId %]\n" \
+	[% levelId %].[% ehSuffix %].vcf.gz \
+	>> [% levelId %].[% ehSuffix %].tsv 2>/dev/null
+	if [ $? != 0 ]; then echo "ERROR : expansionhunter [% ehSuffix %] [step#6] [${cmdFile}]" >> ${errLog}; exit 1; fi
+else
+	echo "No variant detected" >> [% levelId %].[% ehSuffix %].tsv
+fi
+
+printf END >&2; uptime >&2
+date >&2

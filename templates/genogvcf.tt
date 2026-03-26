@@ -1,0 +1,44 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# GenotypeGVCFs
+echo "# INFO - Running GenotypeGVFs ..." >&2
+mkdir gatktmp.[% chr %]
+apptainer run --no-home --bind ${bindDir} ${contDir}/${gatk4Cont} gatk GenotypeGVCFs \
+--tmp-dir gatktmp.[% chr %] \
+--reference ${fasta} \
+--intervals [% chr %] \
+--output [% levelId %].[% chr %].g.geno.vcf.gz \
+--variant [% input %]
+if [ $? != 0 ]; then echo "ERROR : genogvcf [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+rm -rf gatktmp.[% chr %]
+
+# VCF integrity
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% chr %].g.geno.vcf.gz >&2
+if [ $? != 0 ]; then echo "ERROR : genogvcf [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

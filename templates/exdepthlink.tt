@@ -1,0 +1,39 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# link objects
+echo "# INFO - Copying EDobject ..." >&2
+for EDobject in $(ls -1d [% exdepthPath %]/*_EDobject.gz); do
+	cp -v $EDobject [% stepDir %]/. >&2
+	if [ $? != 0 ]; then echo "ERROR : exdepthlink [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+done
+
+#~ echo "# INFO - Linking EDobjects ..." >&2
+#~ for EDobject in $(ls -1d [% exdepthPath %]/*_EDobject.gz); do
+	#~ ln -vs $EDobject [% stepDir %]/. >&2
+	#~ if [ $? != 0 ]; then echo "ERROR : exdepthlink [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+#~ done
+
+printf END >&2; uptime >&2

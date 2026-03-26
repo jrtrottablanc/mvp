@@ -1,0 +1,45 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# samtools
+echo "# INFO - Running samtools ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${samtoolsCont} samtools view -C \
+--threads [% cpu %] \
+--write-index \
+-T ${fasta} \
+-o [% levelId %].cram \
+[% input %].bam
+if [ $? != 0 ]; then echo "ERROR : bamtocram [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi 
+
+# check convertion
+echo "# INFO - Checking BAM to CRAM convertion ..." >&2
+bamReads=$(apptainer run --no-home --bind ${bindDir} ${contDir}/${samtoolsCont} samtools flagstat [% input %].bam | head -1 | cut -d' ' -f1)
+cramReads=$(apptainer run --no-home --bind ${bindDir} ${contDir}/${samtoolsCont} samtools flagstat [% levelId %].cram | head -1 | cut -d' ' -f1)
+if [ $cramReads -ne $bamReads ]; then
+	echo "ERROR : bamtocram [step#2] [${cmdFile}]" >> ${errLog}; exit 1
+fi
+
+printf END >&2; uptime >&2
+date >&2

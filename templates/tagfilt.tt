@@ -1,0 +1,134 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${funcDir}/candidateGenes.sh
+
+# copy input files and rename
+echo "# INFO - Copying input files and renaming with final file name ..." >&2
+cp -v [% input %] [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz >&2
+cp -v [% input %].tbi [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz.tbi >&2
+
+# candidate genes
+echo "# INFO - Tagging candidate genes ..." >&2
+check_input_genes "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+create_temp_file "[% levelId %]" "${cmdFile}" "${errLog}"
+tag_variants_in_candidate_genes "[% levelId %]" "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+
+# VCF index
+echo "# INFO - Creating VCF indexes ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : tagfilt [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF integrity
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz >&2
+if [ $? != 0 ]; then echo "ERROR : tagfilt [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# clean tmp
+echo "# INFO - Cleaning temporary files ..." >&2
+rm [% levelId %].allchr.g.geno.norm.ann.tag.TMP*
+if [ $? != 0 ]; then echo "ERROR : tagfilt [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# variants found in BED
+if [ -f ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf ]; then
+        source ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf
+else
+        roiBed="NA"
+fi
+
+echo "# INFO - Tagging ROI ..." >&2
+if [ "${roiBed}" != "NA" ]; then
+	
+	# prepare original BED file
+	echo "# INFO - Preparing original BED file ..." >&2
+	bedID=$(basename ${roiBed} .bed)
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools sort -i ${roiBed} | \
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools merge > ${bedID}.merge.bed
+	if [ $? != 0 ]; then echo "ERROR : tagfilt [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	# prepare genome file
+	echo "# INFO - Preparing genome file ..." >&2
+	fastaID=$(basename ${fasta})
+	cut -f 1,2 ${fasta}.fai > ${fastaID}.genome
+	if [ $? != 0 ]; then echo "ERROR : tagfilt [step#5] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	IFS="|" read -a bedPaddings <<< $(echo "${bedPadding}")
+	for bedPaddingAct in "${bedPaddings[@]}"; do
+		
+		# rename input as tmp
+		echo "# INFO - Renaming input files as temporary file for padding [${bedPaddingAct}] ..." >&2
+		mv -v [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz [% levelId %].allchr.g.geno.norm.ann.tag.TEMP.vcf.gz >&2
+		mv -v [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz.tbi [% levelId %].allchr.g.geno.norm.ann.tag.TEMP.vcf.gz.tbi >&2
+		
+		# padded BED file
+		echo "# INFO - Creating padded BED file for padding [${bedPaddingAct}] ..." >&2
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools slop -i ${bedID}.merge.bed -b ${bedPaddingAct} -g ${fastaID}.genome  | \
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools sort | \
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools merge > ${bedID}.padding${bedPaddingAct}bp.merge.bed
+		if [ $? != 0 ]; then echo "ERROR : tagfilt [step#6] - ${bedPaddingAct}bp [${cmdFile}]" >> ${errLog}; exit 1; fi
+		
+		# padded TAG file
+		echo "# INFO - Creating padded TAG file for padding [${bedPaddingAct}] ..." >&2
+		cat ${bedID}.padding${bedPaddingAct}bp.merge.bed | awk -v bedPaddingAct=${bedPaddingAct} '{print $1"\t"$2"\t"$3"\tInBedPadding"bedPaddingAct"bp"}' | \
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > ${bedID}.padding${bedPaddingAct}bp.merge.tag.bed.gz
+		if [ $? != 0 ]; then echo "ERROR : tagfilt [step#7] - ${bedPaddingAct}bp [${cmdFile}]" >> ${errLog}; exit 1; fi
+		
+		# padded TAG indexes
+		echo "# INFO - Creating padded TAG indexes for padding [${bedPaddingAct}] ..." >&2
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -f -p bed ${bedID}.padding${bedPaddingAct}bp.merge.tag.bed.gz
+		if [ $? != 0 ]; then echo "ERROR : tagfilt [step#8] - ${bedPaddingAct}bp [${cmdFile}]" >> ${errLog}; exit 1; fi
+		
+		# bcftools annotate
+		echo "# INFO - Running bcftools annotate for padding [${bedPaddingAct}] ..." >&2
+		apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools annotate \
+		-a ${bedID}.padding${bedPaddingAct}bp.merge.tag.bed.gz \
+		-c CHROM,FROM,TO,InBedPadding${bedPaddingAct}bp \
+		-h <(echo "##INFO=<ID=InBedPadding${bedPaddingAct}bp,Number=1,Type=String,Description=\"Variants found in ${roiBed} with padding ${bedPaddingAct}bp\">") \
+		-O z \
+		-o [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz \
+		[% levelId %].allchr.g.geno.norm.ann.tag.TEMP.vcf.gz
+		if [ $? != 0 ]; then echo "ERROR : tagfilt [step#9] - ${bedPaddingAct}bp [${cmdFile}]" >> ${errLog}; exit 1; fi
+		
+		# VCF indexes
+		echo "# INFO - Creating VCF indexes for padding [${bedPaddingAct}] ..." >&2
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz
+		if [ $? != 0 ]; then echo "ERROR : tagfilt [step#10] - ${bedPaddingAct}bp [${cmdFile}]" >> ${errLog}; exit 1; fi
+		
+		# VCF integrity
+		echo "# INFO - Checking VCF integrity for padding [${bedPaddingAct}] ..." >&2
+		/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz >&2
+		if [ $? != 0 ]; then echo "ERROR : tagfilt [step#11] - ${bedPaddingAct}bp [${cmdFile}]" >> ${errLog}; exit 1; fi
+		
+		# clean tmp
+		echo "# INFO - Removing temporary file for padding [${bedPaddingAct}] ..." >&2
+		rm -v [% levelId %].allchr.g.geno.norm.ann.tag.TEMP.vcf.gz >&2
+		rm -v [% levelId %].allchr.g.geno.norm.ann.tag.TEMP.vcf.gz.tbi >&2
+		
+	done
+else
+	echo "# INFO - No ROI configuration defined for [[% app %]], expect [${confDir}/${pipeConf%.conf}_ROI_[% app %].conf], skipping tag with ROI BED" >&2
+fi
+
+printf END >&2; uptime >&2
+date >&2

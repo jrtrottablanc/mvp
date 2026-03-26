@@ -1,0 +1,664 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+echo "# INFO - Defining main variables ..." >&2
+
+javaMem=$(echo $(([% cpu %]*[% mem %]/1000)))
+echo "javaMem: ${javaMem}" >&2
+initial_chrM_name="${mtChr}"
+echo "initial_chrM_name: ${mtChr}" >&2
+sample_name="[% levelId %]"
+echo "sample_name: $sample_name" >&2
+analysisFolder="[% stepDir %]"
+echo "analysisFolder: $analysisFolder" >&2
+initial_bam="[% input %]"
+echo "initial_bam: $initial_bam" >&2
+initial_bam_index="[% input %].bai"
+echo "initial_bam_index: $initial_bam_index" >&2
+blacklisted_sites='/scratch_isilon/groups/dat/apps/GATK_MT/20220120/hg38/blacklist_sites.hg38.chrM.bed'
+echo "blacklisted_sites: $blacklisted_sites" >&2
+control_region_shifted_reference_interval_list='/scratch_isilon/groups/dat/apps/GATK_MT/20220120/hg38/control_region_shifted.chrM.interval_list'
+echo "control_region_shifted_reference_interval_list: $control_region_shifted_reference_interval_list" >&2
+gatk_singularity="${contDir}/${mtgatkCont}"
+echo "gatk_singularity: $gatk_singularity" >&2
+genomes_in_the_cloud_singularity="${contDir}/${mtgenomeCont}"
+echo "genomes_in_the_cloud_singularity: $genomes_in_the_cloud_singularity" >&2
+haplochech_singularity="${contDir}/${mthaploCont}"
+echo "haplochech_singularity: $haplochech_singularity" >&2
+max_alt_allele_count=4
+echo "max_alt_allele_count: $max_alt_allele_count" >&2
+non_control_region_interval_list='/scratch_isilon/groups/dat/apps/GATK_MT/20220120/hg38/non_control_region.chrM.interval_list'
+echo "non_control_region_interval_list: $non_control_region_interval_list" >&2
+ref_fasta='/scratch_isilon/groups/dat/apps/GATK_MT/20220120/hg38/Homo_sapiens_assembly38.chrM.fasta'
+echo "ref_fasta: $ref_fasta" >&2
+shifted_ref_fasta='/scratch_isilon/groups/dat/apps/GATK_MT/20220120/hg38/Homo_sapiens_assembly38.chrM.shifted_by_8000_bases.fasta'
+echo "shifted_ref_fasta: $shifted_ref_fasta" >&2
+vaf_filter_threshold=0
+echo "vaf_filter_threshold: $vaf_filter_threshold" >&2
+wgs_grch37_ref_fasta='/scratch_isilon/groups/dat/data/Organisms/Homo_sapiens/GRCh37/fasta/hsapiens.GRCh37.fasta'
+echo "wgs_grch37_ref_fasta: $wgs_grch37_ref_fasta" >&2
+wgs_grch38_ref_fasta='/scratch_isilon/groups/dat/apps/GATK_MT/20220120/hg38/Homo_sapiens_assembly38.fasta'
+echo "wgs_grch38_ref_fasta: $wgs_grch38_ref_fasta" >&2
+
+echo "# INFO - Preparing structure ..." >&2
+mkdir -pv metrics >&2
+mkdir -pv tmpFiles >&2
+mkdir -pv tmpHaplocheck >&2
+
+echo "# INFO - Getting genome reference based on chrM name ..." >&2
+if [ $initial_chrM_name == 'MT' ]; then
+	wgs_ref_fasta=${wgs_grch37_ref_fasta}
+else
+	wgs_ref_fasta=${wgs_grch38_ref_fasta}
+fi
+echo $wgs_ref_fasta >&2
+
+echo "# INFO - Subsetting BAM to chrM ..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk PrintReads \
+-R ${wgs_ref_fasta} \
+-L ${initial_chrM_name} \
+--read-filter MateOnSameContigOrNoMappedMateReadFilter \
+--read-filter MateUnmappedAndUnmappedReadFilter \
+-I ${initial_bam} \
+--read-index ${initial_bam_index} \
+-O tmpFiles/${sample_name}_${initial_chrM_name}_reads.bam
+if [ $? != 0 ]; then echo "ERROR : mt [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Reverting SAM ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -Xmx${javaMem}g -jar /usr/gitc/picard.jar RevertSam \
+INPUT=tmpFiles/${sample_name}_${initial_chrM_name}_reads.bam \
+OUTPUT_BY_READGROUP=false \
+OUTPUT=tmpFiles/${sample_name}_unmapped.bam \
+VALIDATION_STRINGENCY=LENIENT \
+ATTRIBUTE_TO_CLEAR=FT \
+ATTRIBUTE_TO_CLEAR=CO \
+SORT_ORDER=queryname \
+RESTORE_ORIGINAL_QUALITIES=false
+if [ $? != 0 ]; then echo "ERROR : mt [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Defining variables for mapping on chrM ..." >&2
+bwa_version=$(singularity exec ${genomes_in_the_cloud_singularity} /usr/gitc/bwa 2>&1 | grep -e '^Version' | sed 's/Version: //')
+echo "bwa_version: $bwa_version" >&2
+ref_to_use=${ref_fasta}
+echo "ref_to_use: $ref_to_use" >&2
+bwa_commandline="bwa mem -K 100000000 -p -v 3 -t 2 -Y ${ref_to_use}"
+echo "bwa_commandline: $bwa_commandline" >&2
+prefix='chrM'
+echo "prefix: $prefix" >&2
+output_basename="${sample_name}_${prefix}"
+echo "output_basename: $output_basename" >&2
+metrics_filename="metrics/${output_bam_basename}.MarkDuplicates.metrics"
+echo "metrics_filename: $metrics_filename" >&2
+
+echo "# INFO - SamToFastq & BWA-mem & MergeBamAlignment on chrM ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -Xms${javaMem}g -jar /usr/gitc/picard.jar SamToFastq \
+INPUT=tmpFiles/${sample_name}_unmapped.bam \
+FASTQ=/dev/stdout \
+INTERLEAVE=true \
+NON_PF=true | \
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} /usr/gitc/${bwa_commandline} /dev/stdin - 2> >(tee ${output_basename}.bwa.stderr.log >&2) | \
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -Xms${javaMem}g -jar /usr/gitc/picard.jar MergeBamAlignment \
+VALIDATION_STRINGENCY=SILENT \
+EXPECTED_ORIENTATIONS=FR \
+ATTRIBUTES_TO_RETAIN=X0 \
+ATTRIBUTES_TO_REMOVE=NM \
+ATTRIBUTES_TO_REMOVE=MD \
+ALIGNED_BAM=/dev/stdin \
+UNMAPPED_BAM=tmpFiles/${sample_name}_unmapped.bam \
+OUTPUT=tmpFiles/${output_basename}.MergeBamAlignment.bam \
+REFERENCE_SEQUENCE=${ref_to_use} \
+PAIRED_RUN=true \
+SORT_ORDER="unsorted" \
+IS_BISULFITE_SEQUENCE=false \
+ALIGNED_READS_ONLY=false \
+CLIP_ADAPTERS=false \
+MAX_RECORDS_IN_RAM=2000000 \
+ADD_MATE_CIGAR=true \
+MAX_INSERTIONS_OR_DELETIONS=-1 \
+PRIMARY_ALIGNMENT_STRATEGY=MostDistant \
+PROGRAM_RECORD_ID="bwamem" \
+PROGRAM_GROUP_VERSION=${bwa_version} \
+PROGRAM_GROUP_COMMAND_LINE="${bwa_commandline}" \
+PROGRAM_GROUP_NAME="bwamem" \
+UNMAPPED_READ_STRATEGY=COPY_TO_TAG \
+ALIGNER_PROPER_PAIR_FLAGS=true \
+UNMAP_CONTAMINANT_READS=true \
+ADD_PG_TAG_TO_READS=false
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.1.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - MarkDuplicates on chrM ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -Xms${javaMem}g -jar /usr/gitc/picard.jar MarkDuplicates \
+INPUT=tmpFiles/${output_basename}.MergeBamAlignment.bam \
+OUTPUT=tmpFiles/${output_basename}.MergeBamAlignment.MarkDuplicates.bam \
+METRICS_FILE=${metrics_filename} \
+VALIDATION_STRINGENCY=SILENT \
+OPTICAL_DUPLICATE_PIXEL_DISTANCE=2500 \
+ASSUME_SORT_ORDER="queryname" \
+CLEAR_DT="false" \
+ADD_PG_TAG_TO_READS=false
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.1.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - SortSam on chrM ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -Xms${javaMem}g -jar /usr/gitc/picard.jar SortSam \
+INPUT=tmpFiles/${output_basename}.MergeBamAlignment.MarkDuplicates.bam \
+OUTPUT=${output_basename}.bam \
+SORT_ORDER="coordinate" \
+CREATE_INDEX=true \
+MAX_RECORDS_IN_RAM=300000
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.1.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Defining variables for mapping on shifted chrM ..." >&2
+bwa_version=$(singularity exec ${genomes_in_the_cloud_singularity} /usr/gitc/bwa 2>&1 | grep -e '^Version' | sed 's/Version: //')
+echo "bwa_version: $bwa_version" >&2
+ref_to_use=${shifted_ref_fasta}
+echo "ref_to_use: $ref_to_use" >&2
+bwa_commandline="bwa mem -K 100000000 -p -v 3 -t 2 -Y ${ref_to_use}"
+echo "bwa_commandline: $bwa_commandline" >&2
+prefix='Shifted_chrM'
+echo "prefix: $prefix" >&2
+output_basename="${sample_name}_${prefix}"
+echo "output_basename: $output_basename" >&2
+metrics_filename="metrics/${output_bam_basename}.MarkDuplicates.metrics"
+echo "metrics_filename: $metrics_filename" >&2
+
+echo "# INFO - SamToFastq & BWA-mem & MergeBamAlignment on shifted chrM ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -Xms${javaMem}g -jar /usr/gitc/picard.jar SamToFastq \
+INPUT=tmpFiles/${sample_name}_unmapped.bam \
+FASTQ=/dev/stdout \
+INTERLEAVE=true \
+NON_PF=true | \
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} /usr/gitc/${bwa_commandline} /dev/stdin - 2> >(tee ${output_basename}.bwa.stderr.log >&2) | \
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -Xms${javaMem}g -jar /usr/gitc/picard.jar MergeBamAlignment \
+VALIDATION_STRINGENCY=SILENT \
+EXPECTED_ORIENTATIONS=FR \
+ATTRIBUTES_TO_RETAIN=X0 \
+ATTRIBUTES_TO_REMOVE=NM \
+ATTRIBUTES_TO_REMOVE=MD \
+ALIGNED_BAM=/dev/stdin \
+UNMAPPED_BAM=tmpFiles/${sample_name}_unmapped.bam \
+OUTPUT=tmpFiles/${output_basename}.MergeBamAlignment.bam \
+REFERENCE_SEQUENCE=${ref_to_use} \
+PAIRED_RUN=true \
+SORT_ORDER="unsorted" \
+IS_BISULFITE_SEQUENCE=false \
+ALIGNED_READS_ONLY=false \
+CLIP_ADAPTERS=false \
+MAX_RECORDS_IN_RAM=2000000 \
+ADD_MATE_CIGAR=true \
+MAX_INSERTIONS_OR_DELETIONS=-1 \
+PRIMARY_ALIGNMENT_STRATEGY=MostDistant \
+PROGRAM_RECORD_ID="bwamem" \
+PROGRAM_GROUP_VERSION=${bwa_version} \
+PROGRAM_GROUP_COMMAND_LINE="${bwa_commandline}" \
+PROGRAM_GROUP_NAME="bwamem" \
+UNMAPPED_READ_STRATEGY=COPY_TO_TAG \
+ALIGNER_PROPER_PAIR_FLAGS=true \
+UNMAP_CONTAMINANT_READS=true \
+ADD_PG_TAG_TO_READS=false
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.2.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - MarkDuplicates on shifted chrM ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -Xms${javaMem}g -jar /usr/gitc/picard.jar MarkDuplicates \
+INPUT=tmpFiles/${output_basename}.MergeBamAlignment.bam \
+OUTPUT=tmpFiles/${output_basename}.MergeBamAlignment.MarkDuplicates.bam \
+METRICS_FILE=${metrics_filename} \
+VALIDATION_STRINGENCY=SILENT \
+OPTICAL_DUPLICATE_PIXEL_DISTANCE=2500 \
+ASSUME_SORT_ORDER="queryname" \
+CLEAR_DT="false" \
+ADD_PG_TAG_TO_READS=false
+if [ $? != 0 ]; then echo "ERROR : mt [step#.3.2.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - SortSam on shifted chrM ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -Xms${javaMem}g -jar /usr/gitc/picard.jar SortSam \
+INPUT=tmpFiles/${output_basename}.MergeBamAlignment.MarkDuplicates.bam \
+OUTPUT=${output_basename}.bam \
+SORT_ORDER="coordinate" \
+CREATE_INDEX=true \
+MAX_RECORDS_IN_RAM=300000
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.2.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Defining variables for collecting metrics ..." >&2
+coverage_cap=100000
+echo "coverage_cap: $coverage_cap" >&2
+read_length_for_optimization=151
+echo "read_length_for_optimization: $read_length_for_optimization" >&2
+prefix='chrM'
+echo "prefix: $prefix" >&2
+output_basename="${sample_name}_${prefix}"
+echo "output_basename: $output_basename" >&2
+
+echo "# INFO - CollectWgsMetrics ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -Xms${javaMem}g -jar /usr/gitc/picard.jar CollectWgsMetrics \
+INPUT=${output_basename}.bam \
+VALIDATION_STRINGENCY=SILENT \
+REFERENCE_SEQUENCE=${ref_fasta} \
+OUTPUT=metrics.txt \
+USE_FAST_ALGORITHM=true \
+READ_LENGTH=${read_length_for_optimization} \
+COVERAGE_CAP=${coverage_cap} \
+INCLUDE_BQ_HISTOGRAM=true \
+THEORETICAL_SENSITIVITY_OUTPUT=theoretical_sensitivity.txt
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.3.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running R script ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} \
+R --vanilla <<CODE
+	df = read.table("metrics.txt",skip=6,header=TRUE,stringsAsFactors=FALSE,sep='\t',nrows=1)
+	write.table(floor(df[,"MEAN_COVERAGE"]), "mean_coverage.txt", quote=F, col.names=F, row.names=F)
+	write.table(df[,"MEDIAN_COVERAGE"], "median_coverage.txt", quote=F, col.names=F, row.names=F)
+CODE
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.3.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Moving metrics files ..." >&2
+mv -v metrics.txt metrics/${output_basename}.CollectWgsMetrics.metrics >&2
+mv -v theoretical_sensitivity.txt metrics/${output_basename}.CollectWgsMetrics.theoretical_sensitivity.txt >&2
+mv -v mean_coverage.txt metrics/${output_basename}.mean_coverage.txt >&2
+mv -v median_coverage.txt metrics/${output_basename}.median_coverage.txt >&2
+
+echo "# INFO - Defining variables for Mutect2 on chrM ..." >&2
+command_mem=${javaMem}
+echo "command_mem: $command_mem" >&2
+max_reads_per_alignment_start=75
+echo "max_reads_per_alignment_start: $max_reads_per_alignment_start" >&2
+ref_to_use=${ref_fasta}
+echo "ref_to_use: $ref_to_use" >&2
+region_coordinates='chrM:576-16024'
+echo "region_coordinates: $region_coordinates" >&2
+prefix='chrM'
+echo "prefix: $prefix" >&2
+output_basename="${sample_name}_${prefix}"
+echo "output_basename: $output_basename" >&2
+
+echo "# INFO - Touching Mutect2.bamout.bam on chrM ..." >&2
+touch tmpFiles/${output_basename}.Mutect2.bamout.bam
+echo "tmpFiles/${output_basename}.Mutect2.bamout.bam" >&2
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.4.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running Mutect2 on chrM ..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk --java-options "-Xmx${command_mem}g" Mutect2 \
+-R ${ref_to_use} \
+-I ${output_basename}.bam \
+--read-filter MateOnSameContigOrNoMappedMateReadFilter \
+--read-filter MateUnmappedAndUnmappedReadFilter \
+-O tmpFiles/${output_basename}.Mutect2.vcf.gz \
+--bam-output tmpFiles/${output_basename}.Mutect2.bamout.bam \
+-L ${region_coordinates} \
+--annotation StrandBiasBySample \
+--mitochondria-mode \
+--max-reads-per-alignment-start ${max_reads_per_alignment_start} \
+--max-mnp-distance 0
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.4.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Defining variables for Mutect2 on shifted chrM ..." >&2
+command_mem=${javaMem}
+echo "command_mem: $command_mem" >&2
+max_reads_per_alignment_start=75
+echo "max_reads_per_alignment_start: $max_reads_per_alignment_start" >&2
+ref_to_use=${shifted_ref_fasta}
+echo "ref_to_use: $ref_to_use" >&2
+region_coordinates='chrM:8025-9144'
+echo "region_coordinates: $region_coordinates" >&2
+prefix='Shifted_chrM'
+echo "prefix: $prefix" >&2
+output_basename="${sample_name}_${prefix}"
+echo "output_basename: $output_basename" >&2
+
+echo "# INFO - Touching Mutect2.bamout.bam on shifted chrM ..." >&2
+touch tmpFiles/${output_basename}.Mutect2.bamout.bam
+echo "tmpFiles/${output_basename}.Mutect2.bamout.bam" >&2
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.5.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running Mutect2 on shifted chrM..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk --java-options "-Xmx${command_mem}g" Mutect2 \
+-R ${ref_to_use} \
+-I ${output_basename}.bam \
+--read-filter MateOnSameContigOrNoMappedMateReadFilter \
+--read-filter MateUnmappedAndUnmappedReadFilter \
+-O tmpFiles/${output_basename}.Mutect2.vcf.gz \
+--bam-output tmpFiles/${output_basename}.Mutect2.bamout.bam \
+-L ${region_coordinates} \
+--annotation StrandBiasBySample \
+--mitochondria-mode \
+--max-reads-per-alignment-start ${max_reads_per_alignment_start} \
+--max-mnp-distance 0
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.5.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Defining variables for merging VCFs ..." >&2
+shift_back_chain='/scratch_isilon/groups/dat/apps/GATK_MT/20220120/hg38/ShiftBack.chain'
+echo "shift_back_chain: $shift_back_chain" >&2
+
+echo "# INFO - Running LiftoverVcf ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -jar /usr/gitc/picard.jar LiftoverVcf \
+I=tmpFiles/${sample_name}_Shifted_chrM.Mutect2.vcf.gz \
+O=tmpFiles/${sample_name}_Shifted_chrM.Mutect2.Shifted_back.vcf.gz \
+R=${ref_fasta} \
+CHAIN=${shift_back_chain} \
+REJECT=tmpFiles/${sample_name}_Shifted_chrM.Mutect2.rejected.vcf.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.6.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running MergeVcfs ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -jar /usr/gitc/picard.jar MergeVcfs \
+I=tmpFiles/${sample_name}_Shifted_chrM.Mutect2.Shifted_back.vcf.gz \
+I=tmpFiles/${sample_name}_chrM.Mutect2.vcf.gz \
+O=tmpFiles/${sample_name}.Mutect2.Merged.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.6.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Defining variables for merging mutect calls ..." >&2
+shifted_stats=raw${sample_name}Shifted.vcf.gz.stats
+echo "shifted_stats: $shifted_stats" >&2
+non_shifted_stats=raw${sample_name}.vcf.gz.stats
+echo "shift_back_chain: $shift_back_chain" >&2
+
+echo "# INFO - Running MergeMutectStats ..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk MergeMutectStats \
+--stats tmpFiles/${sample_name}_Shifted_chrM.Mutect2.vcf.gz.stats \
+--stats tmpFiles/${sample_name}_chrM.Mutect2.vcf.gz.stats \
+-O tmpFiles/${sample_name}_chrM.combined.stats
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.7.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Defining variables for contamination ..." >&2
+if [ $run_contamination ] && [ $has_contamination == 'YES' ]; then
+	if [ $contamination_major -eq 0.0 ]; then
+		hc_contamination=$contamination_minor
+	else
+		hc_contamination=1.0 - $contamination_major 
+	fi
+else
+	hc_contamination=0.0
+fi
+echo "hc_contamination: $hc_contamination" >&2
+
+if [ $verifyBamID ] && [ $verifyBamId -gt $hc_contamination ]; then
+	max_contamination=$verifyBamId
+else
+	max_contamination=$hc_contamination
+fi
+echo "max_contamination: $max_contamination" >&2
+
+echo "# INFO - Running FilterMutectCalls ..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk --java-options "-Xmx${javaMem}g" FilterMutectCalls \
+-V tmpFiles/${sample_name}.Mutect2.Merged.vcf.gz \
+-R ${ref_fasta} \
+-O tmpFiles/${sample_name}.filtered.vcf.gz \
+--stats tmpFiles/${sample_name}_chrM.combined.stats \
+--max-alt-allele-count ${max_alt_allele_count} \
+--mitochondria-mode \
+--min-allele-fraction ${vaf_filter_threshold} \
+--contamination-estimate ${max_contamination}
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.8.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running VariantFiltration ..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk VariantFiltration \
+-V tmpFiles/${sample_name}.filtered.vcf.gz \
+-O ${sample_name}.Filtered_x1.vcf.gz \
+--apply-allele-specific-filters \
+--mask ${blacklisted_sites} \
+--mask-name "blacklisted_site"
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.8.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running LeftAlignAndTrimVariants ..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk LeftAlignAndTrimVariants \
+-R ${ref_fasta} \
+-V ${sample_name}.Filtered_x1.vcf.gz \
+-O ${sample_name}.Filtered_x1.Split.vcf.gz \
+--split-multi-allelics \
+--dont-trim-alleles \
+--keep-original-ac
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.9.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running SelectVariants ..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk SelectVariants \
+-V ${sample_name}.Filtered_x1.Split.vcf.gz \
+-O ${sample_name}.Filtered_x1.SplitAndPassOnly.vcf.gz \
+--exclude-filtered
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.9.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Copying files and defining variables for haplocheck ..." >&2
+cp -v ${sample_name}.Filtered_x1.SplitAndPassOnly.vcf.gz* tmpHaplocheck/ >&2
+PARENT_DIR=`pwd`/tmpHaplocheck/
+echo "PARENT_DIR: $PARENT_DIR" >&2
+
+echo "# INFO - Running haplocheckCLI ..." >&2
+apptainer exec -B ${bindDir} ${haplochech_singularity} java -jar /usr/mtdnaserver/haplocheckCLI.jar "${PARENT_DIR}"
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.10.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Moving output files ..." >&2
+mv -v output* metrics/ >&2
+
+echo "# INFO - Seding and greping ..." >&2
+sed 's/\"//g' metrics/output > metrics/output-noquotes
+grep "SampleID" metrics/output-noquotes > metrics/headers
+
+echo "# INFO - Checking file format ..." >&2
+FORMAT_ERROR="Bad contamination file format"
+if [ `awk '{print $2}' metrics/headers` != "Contamination" ]; then
+	echo $FORMAT_ERROR; exit 1
+fi
+if [ `awk '{print $6}' metrics/headers` != "HgMajor" ]; then
+	echo $FORMAT_ERROR; exit 1
+fi
+if [ `awk '{print $8}' metrics/headers` != "HgMinor" ]; then
+	echo $FORMAT_ERROR; exit 1
+fi
+if [ `awk '{print $14}' metrics/headers` != "MeanHetLevelMajor" ]; then
+	echo $FORMAT_ERROR; exit 1
+fi
+if [ `awk '{print $15}' metrics/headers` != "MeanHetLevelMinor" ]; then
+	echo $FORMAT_ERROR; exit 1
+fi
+
+echo "# INFO - Collecting metrics ..." >&2
+grep -v "SampleID" metrics/output-noquotes > metrics/output-data
+awk -F "\t" '{print $2}' metrics/output-data > metrics/contamination.txt
+awk -F "\t" '{print $6}' metrics/output-data > metrics/major_hg.txt
+awk -F "\t" '{print $8}' metrics/output-data > metrics/minor_hg.txt
+awk -F "\t" '{print $14}' metrics/output-data > metrics/mean_het_major.txt
+awk -F "\t" '{print $15}' metrics/output-data > metrics/mean_het_minor.txt
+
+echo "# INFO - Defining variables for contamination filtering ..." >&2
+run_contamination=true
+echo "run_contamination: $run_contamination" >&2
+has_contamination=$(cat metrics/contamination.txt)
+echo "has_contamination: $has_contamination" >&2
+contamination_major=$(cat metrics/mean_het_major.txt)
+echo "contamination_major: $contamination_major" >&2
+contamination_minor=$(cat metrics/mean_het_minor.txt)
+echo "contamination_minor: $contamination_minor" >&2
+if [ $run_contamination ] && [ $has_contamination == 'YES' ]; then
+	if [ $contamination_major -eq 0.0 ]; then
+		hc_contamination=$contamination_minor
+	else
+		hc_contamination=1.0 - $contamination_major 
+	fi
+else
+	hc_contamination=0.0
+fi
+echo "hc_contamination: $hc_contamination" >&2
+
+if [ $verifyBamID ] && [ $verifyBamId -gt $hc_contamination ]; then
+	max_contamination=$verifyBamId
+else
+	max_contamination=$hc_contamination
+fi
+echo "max_contamination: $max_contamination" >&2
+
+echo "# INFO - Running FilterMutectCalls ..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk --java-options "-Xmx${javaMem}g" FilterMutectCalls \
+-V ${sample_name}.Filtered_x1.vcf.gz \
+-R ${ref_fasta} \
+-O tmpFiles/${sample_name}.filtered.vcf \
+--stats tmpFiles/${sample_name}_chrM.combined.stats \
+--max-alt-allele-count ${max_alt_allele_count} \
+--mitochondria-mode \
+--min-allele-fraction ${vaf_filter_threshold} \
+--contamination-estimate ${max_contamination}
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.11.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running VariantFiltration ..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk VariantFiltration \
+-V tmpFiles/${sample_name}.filtered.vcf \
+-O ${sample_name}.Filtered_x2.vcf.gz \
+--apply-allele-specific-filters \
+--mask ${blacklisted_sites} \
+--mask-name "blacklisted_site"
+if [ $? != 0 ]; then echo "ERROR : mt [step#3.11.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running CollectHsMetrics on chrM ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -jar /usr/gitc/picard.jar CollectHsMetrics \
+I=${sample_name}_chrM.bam \
+R=${ref_fasta} \
+PER_BASE_COVERAGE=metrics/non_control_region.tsv \
+O=metrics/non_control_region.metrics \
+TI=${non_control_region_interval_list} \
+BI=${non_control_region_interval_list} \
+COVMAX=20000 \
+THEORETICAL_SENSITIVITY_OUTPUT=metrics/${sample_name}_chrM.CollectHsMetrics.theoretical_sensitivity.txt \
+SAMPLE_SIZE=1
+if [ $? != 0 ]; then echo "ERROR : mt [step#4.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running CollectHsMetrics on shifted chrM ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} java -jar /usr/gitc/picard.jar CollectHsMetrics \
+I=${sample_name}_Shifted_chrM.bam \
+R=${shifted_ref_fasta} \
+PER_BASE_COVERAGE=metrics/control_region_shifted.tsv \
+O=metrics/control_region_shifted.metrics \
+TI=${control_region_shifted_reference_interval_list} \
+BI=${control_region_shifted_reference_interval_list} \
+COVMAX=20000 \
+THEORETICAL_SENSITIVITY_OUTPUT=metrics/${sample_name}_Shifted_chrM.CollectHsMetrics.theoretical_sensitivity.txt \
+SAMPLE_SIZE=1
+if [ $? != 0 ]; then echo "ERROR : mt [step#4.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running R script ..." >&2
+apptainer exec -B ${bindDir} ${genomes_in_the_cloud_singularity} \
+R --vanilla <<CODE
+	shift_back = function(x) {
+		if (x < 8570) {
+			return(x + 8000)
+		} else {
+			return (x - 8569)
+		}
+	}
+	control_region_shifted = read.table("metrics/control_region_shifted.tsv", header=T)
+	shifted_back = sapply(control_region_shifted[,"pos"], shift_back)
+	control_region_shifted[,"pos"] = shifted_back
+
+	beginning = subset(control_region_shifted, control_region_shifted[,'pos']<8000)
+	end = subset(control_region_shifted, control_region_shifted[,'pos']>8000)
+
+	non_control_region = read.table("metrics/non_control_region.tsv", header=T)
+	combined_table = rbind(beginning, non_control_region, end)
+	write.table(combined_table, "metrics/per_base_coverage.tsv", row.names=F, col.names=T, quote=F, sep="\t")
+CODE
+if [ $? != 0 ]; then echo "ERROR : mt [step#4.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Running LeftAlignAndTrimVariants ..." >&2
+apptainer exec -B ${bindDir} ${gatk_singularity} gatk LeftAlignAndTrimVariants \
+-R ${ref_fasta} \
+-V ${sample_name}.Filtered_x2.vcf.gz \
+-O ${sample_name}.MT_GATK.vcf.gz \
+--split-multi-allelics \
+--dont-trim-alleles \
+--keep-original-ac
+if [ $? != 0 ]; then echo "ERROR : mt [step#5.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Annotating with gnomAD ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${snpeffCont} SnpSift annotate \
+${mtGnomad} \
+${sample_name}.MT_GATK.vcf.gz | \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > ${sample_name}.MT_GATK.gnomAD.vcf.gz
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf ${sample_name}.MT_GATK.gnomAD.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : mt [step#6.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Annotating with Mitomap Disease ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${snpeffCont} SnpSift annotate \
+${mtMitomapDisease} \
+${sample_name}.MT_GATK.gnomAD.vcf.gz | \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.vcf.gz
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : mt [step#6.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Annotating with Mitomap Polymorphisms ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${snpeffCont} SnpSift annotate \
+${mtMitomapPolymorphisms} \
+${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.vcf.gz | \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.vcf.gz
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : mt [step#6.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Annotating with MitoTIP ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${snpeffCont} SnpSift annotate \
+${mtMitoTip} \
+${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.vcf.gz | \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.MitoTIP.vcf.gz
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.MitoTIP.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : mt [step#6.4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Converting to Excel ..." >&2
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${vcf2tabCont} vcf2tabular \
+-i ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.MitoTIP.vcf.gz \
+-o ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.MitoTIP.vcf.gz.full.xlsx \
+-snpEff F \
+-format GT,AD,AF,DP,F1R2,F2R1,SB \
+-tmpDir '/scratch_isilon/groups/dat/apps/MVPGermline/tmpdir/'
+if [ $? != 0 ]; then echo "ERROR : mt [step#7] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+mv ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.MitoTIP.vcf.gz ${sample_name}.mtDNA.annot.vcf.gz
+mv ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.MitoTIP.vcf.gz.tbi ${sample_name}.mtDNA.annot.vcf.gz.tbi
+mv ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.MitoTIP.vcf.gz.full.xlsx ${sample_name}.mtDNA.annot.vcf.gz.full.xlsx
+
+echo "# INFO - Filtering PASS variants ..." >&2
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools filter \
+-i'FILTER=="PASS"' \
+${sample_name}.mtDNA.annot.vcf.gz | \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c  > ${sample_name}.mtDNA.annot.PASS.vcf.gz
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf ${sample_name}.mtDNA.annot.PASS.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : mt [step#8.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+echo "# INFO - Filtering Mitomap ..." >&2
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools filter \
+-i'(FORMAT/AF>=0.01 & MitoMap_DiseaseStatus=="Cfrm") | (FORMAT/AF>=0.01 & MitoMap_DiseaseStatus=="Reported" & MitoMap_AF < 0.5)' \
+${sample_name}.mtDNA.annot.PASS.vcf.gz | \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > ${sample_name}.mtDNA.annot.filter.vcf.gz; \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf ${sample_name}.mtDNA.annot.filter.vcf.gz; \
+if [ $? != 0 ]; then echo "ERROR : mt [step#8.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+zgrep -v "^#" ${sample_name}.mtDNA.annot.filter.vcf.gz | wc -l > ${sample_name}.mtDNA.annot.filter.vcf.gz.cntvar
+cntvar=$(cat ${sample_name}.mtDNA.annot.filter.vcf.gz.cntvar)
+if [ "$cntvar" != "0" ]; then
+	echo "# INFO - Generating report ..." >&2
+	apptainer exec --no-home --bind ${bindDir} ${contDir}/${igvReportCont} create_report \
+	--ideogram /scratch_isilon/groups/dat/apps/IGV-REPORTS/1.0.4/Data/GRCh38_ideogram.bed \
+	--tracks [% stepDir %]/*_Shifted_chrM.bam \
+	--info-columns MitoMap_Disease MitoMap_DiseaseStatus MitoMap_AF gnomAD_WG_AF_het gnomAD_WG_AF_hom \
+	--output [% stepDir %]/${sample_name}.mtDNA.annot.filter.html \
+	[% stepDir %]/${sample_name}.mtDNA.annot.filter.vcf.gz \
+	/scratch_isilon/groups/dat/data/Organisms/Homo_sapiens/GRCh38.hl/fasta/hsapiens.GRCh38.hl.fasta
+	if [ $? != 0 ]; then echo "ERROR : mt [step#8.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+fi
+
+printf END >&2; uptime >&2
+date >&2

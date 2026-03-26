@@ -1,0 +1,109 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${funcDir}/candidateGenes.sh
+
+mkdir -pv [% stepDir %]/[% levelId %]
+
+# compute CNVs [% exdepthPath %]
+echo "# INFO - Computing CNVs ..." >&2
+apptainer exec --bind ${bindDir} ${contDir}/${exdepthCont} /usr/bin/ComputeCNVs.R \
+-E [% stepDir %] \
+-S [% levelId %] \
+-D [% stepDir %]/[% levelId %] \
+-G [% exdepthRef %] \
+-B [% roiBed %] \
+-ssms
+if [ $? != 0 ]; then echo "ERROR : exdepthrun [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+cd [% stepDir %]/[% levelId %]
+mv -v exomedepth.[% levelId %].CNVs.tsv [% levelId %].exdepth.CNVs.tsv >&2
+
+if [ "$(sed -n '/^start.p/p;q' [% levelId %].exdepth.CNVs.tsv)" ]; then
+
+	# convert to BED
+	echo "# INFO - Converting to BED ..." >&2
+	grep -v "^start.p" [% levelId %].exdepth.CNVs.tsv | \
+	awk '{if($6>$5){print $7"\t"$5"\t"$6"\t"$3"\t[% levelId %]\t"$9"\t"$10"\t"$11"\t"$12}}' | \
+	sed 's/deletion/DEL/g' | sed 's/duplication/DUP/g' | \
+	sort -k 1,1 > [% levelId %].exdepth.CNVs.bed
+	if [ $? != 0 ]; then echo "ERROR : exdepthrun [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	# add correlation coeff
+	echo "# INFO - Adding Correlation coefficient ..." >&2
+	mv -v [% levelId %].exdepth.CNVs.bed [% levelId %].exdepth.CNVs.tmp.bed >&2
+	corrCoef=$(grep "Correlation between reference and tests count is" ../[% levelId %].exdepthrun_*.err | rev | cut -d " " -f 1 | rev)
+	while read chr start end cnvType sample bayesFactor readsExpected readsObserved readsRatio; do \
+		echo -e "$chr\t$start\t$end\t$cnvType\t$sample\t$bayesFactor\t$readsExpected\t$readsObserved\t$readsRatio\t$corrCoef"; \
+	done < [% levelId %].exdepth.CNVs.tmp.bed \
+	> [% levelId %].exdepth.CNVs.bed
+	if [ $? != 0 ]; then echo "ERROR : exdepthrun [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	rm [% levelId %].exdepth.CNVs.tmp.bed
+
+	# annotsv
+	echo "# INFO - Annotating with annotsv ..." >&2
+	mkdir -pv [% levelId %]_TMP >&2
+	if [ $? != 0 ]; then echo "ERROR : exdepthrun [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	apptainer run --no-home \
+	--bind /scratch_isilon/groups/dat/apps/ANNOTSV/3.4.4_patch/AnnotSV-write.tcl.local:/usr/local/share/tcl8.6/AnnotSV/AnnotSV-write.tcl \
+	--bind ${bindDir} ${contDir}/${annotsvCont} AnnotSV \
+	-samplesidBEDcol 5 \
+	-annotationMode both \
+	-SVinputFile [% levelId %].exdepth.CNVs.bed \
+	-svtBEDcol 4 \
+	-outputDir [% levelId %]_TMP/ \
+	-outputFile [% levelId %].exdepth.annot.tsv \
+	-genomeBuild ${annotsvRef} \
+	-tx ${annotsvDb} \
+	-SVminSize 5 \
+	-annotationsDir ${annotsvAnnotDir} \
+	-variantconvertDir /scratch_isilon/groups/dat/apps/VARIANTCONVERT/2.0.1/ \
+	-vcf 1 \
+	-variantconvertMode full \
+	-SVinputInfo 1 \
+	-includeCI 0 \
+	-overlap 100 \
+	-reciprocal 1 \
+	> [% levelId %].exdepth.annot.log
+	if [ $? != 0 ]; then echo "ERROR : exdepthrun [step#5] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	mv -v [% levelId %]_TMP/* . >&2
+	rm -rv [% levelId %]_TMP >&2
+	sed -i 's/user#1/ExomeDepth_Bayes_factor/' [% levelId %].exdepth.annot.tsv
+	sed -i 's/user#2/ExomeDepth_Reads_expected/' [% levelId %].exdepth.annot.tsv
+	sed -i 's/user#3/ExomeDepth_Reads_observed/' [% levelId %].exdepth.annot.tsv
+	sed -i 's/user#4/ExomeDepth_Reads_ratio/' [% levelId %].exdepth.annot.tsv
+	sed -i 's/user#5/ExomeDepth_Correlation_coeff/' [% levelId %].exdepth.annot.tsv
+
+	# candidate genes
+	echo "# INFO - Tagging candidate genes ..." >&2
+	check_input_genes "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+	cp [% levelId %].exdepth.annot.tsv [% levelId %].exdepth.annot.tag.tsv
+	if [ $? != 0 ]; then echo "ERROR : exdepthrun [step#6] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	tag_annotsv_in_candidate_genes "[% levelId %]" "exdepth" "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+
+else
+	echo "No variant detected" > [% levelId %].exdepth.annot.tag.tsv
+fi
+
+printf END >&2; uptime >&2

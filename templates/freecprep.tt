@@ -1,0 +1,87 @@
+[general]
+
+samtools = /software/crgadm/software/SAMtools/1.15-GCC-11.2.0/bin/samtools
+bedtools = /software/crgadm/software/BEDTools/2.30.0-GCC-11.2.0/bin/bedtools
+
+SambambaThreads = 2
+
+chrLenFile = [% freecChrLen %]
+ploidy = [% freecPloidy %]
+
+# Parameter "breakPointThreshold" specifies the maximal slope of the
+# slope of residual sum of squares.  This should be a positive
+# value. The closer it is to Zero, the more breakpoints will be
+# called. Its recommended value is between 0.1 and 0.8.
+
+breakPointThreshold = .8
+
+# Either coefficientOfVariation or window must be specified for whole
+# genome sequencing data. Set window=0 for exome sequencing data.
+
+# coefficientOfVariation = 0.01
+window = [% windowSize %]
+[% stepTF %]step = [% stepSize %]
+
+# Either chrFiles or GCcontentProfile must be specified too if no
+# control dataset is available.  If you provide a path to chromosome
+# files, Control-FREEC will look for the following fasta files in your
+# directory (in this order): 1, 1.fa, 1.fasta, chr1.fa, chr1.fasta; 2,
+# 2.fa, etc.  Please ensure that you don't have other files but
+# sequences having the listed names in this directory.
+
+chrFiles = [% freecChrDir %]
+
+# If you are working with something non-human, we may need to modify these parameters:
+
+#minExpectedGC = 0.35
+#maxExpectedGC = 0.55
+
+numberOfProcesses = [% freec_cpu %]
+outputDir = [% outputDir %]
+
+#contaminationAdjustment = TRUE
+#contamination = 0.4
+#minMappabilityPerWindow = 0.95
+
+# If the parameter gemMappabilityFile is not specified, then the fraction of non-N nucleotides per window is used as Mappability.
+
+gemMappabilityFile = [% freecMappa %]
+
+#breakPointType = 4
+#forceGCcontentNormalization = 1
+sex=[% sex %]
+
+# Set BedGraphOutput=TRUE if you want to create a BedGraph track for visualization in the UCSC genome browser:
+BedGraphOutput=TRUE
+
+[sample]
+
+mateFile = [% inputBCAM %]
+inputFormat = [% formatInput %]
+mateOrientation = FR
+
+[control]
+
+mateFile = [% baselineBCAM %]
+inputFormat = [% formatBaseline %]
+mateOrientation = FR
+
+[% bafTF %][BAF]
+
+makePileup = [% freecMakepileup %]
+fastaFile = [% fasta %]
+
+SNPfile = [% freecSnpfile %]
+minimalCoveragePerPosition = 5
+
+# Use "minimalQualityPerPosition" and "shiftInQuality" to consider only
+# high quality position in calculation of allelic frequencies (this
+# option significantly slows down reading of .pileup)
+
+#minimalQualityPerPosition = 5
+#shiftInQuality = 33
+
+[% roiTF %][target]
+
+# Use a tab-delimited .BED file to specify capture regions (control dataset is needed to use this option):
+captureRegions = [% freecBed %]

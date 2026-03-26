@@ -1,0 +1,88 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %] 
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${funcDir}/candidateGenes.sh
+
+# Input BAM/CRAM
+BCAMs=$(for BCAM in $(grep -v "^#" [% pedDir %]/[% levelId %]_samples_rawdata.tsv | cut -f 5); do echo $BCAM; done | awk '{print "--bam "$0" "}')
+
+module purge >&2
+module use /software/dat/modules/all >&2
+module load manta/1.6.0-GCC-10.2.0-Python-2.7.18 >&2
+
+# conf manta
+echo "# INFO - Configuring manta ..." >&2
+if [ "[% app %]" = "WGS" ]; then
+        exomeFlag=""
+else
+        exomeFlag="--exome"
+fi
+configManta.py ${exomeFlag} \
+--referenceFasta ${fasta} \
+--callRegions ${mantaCallBed} \
+--runDir [% stepDir %] \
+${BCAMs}
+if [ $? != 0 ]; then echo "ERROR : multmanta [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# run manta
+echo "# INFO - Running manta ..." >&2
+python [% stepDir %]/runWorkflow.py -m local -j [% cpu %]
+if [ $? != 0 ]; then echo "ERROR : multmanta [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+if [ "$(zgrep -v "^#" [% stepDir %]/results/variants/diploidSV.vcf.gz | wc -l)" -ne 0 ]; then
+
+	# annotsv
+	echo "# INFO - Annotating with annotsv ..." >&2
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${annotsvCont} AnnotSV \
+	-annotationMode both \
+	-SVinputFile [% stepDir %]/results/variants/diploidSV.vcf.gz \
+	-outputDir [% stepDir %]/ \
+	-outputFile [% levelId %].manta.annot.tsv \
+	-genomeBuild ${annotsvRef} \
+	-tx ${annotsvDb} \
+	-SVminSize 5 \
+	-annotationsDir ${annotsvAnnotDir} \
+	-variantconvertDir /scratch_isilon/groups/dat/apps/VARIANTCONVERT/2.0.1/ \
+	-vcf 1 \
+	-variantconvertMode full \
+	-SVinputInfo 1 \
+	-includeCI 0 \
+	-overlap 100 \
+	-reciprocal 1 \
+	> [% levelId %].manta.annotsv.log
+	if [ $? != 0 ]; then echo "ERROR : multmanta [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	# candidate genes
+	echo "# INFO - Tagging candidate genes ..." >&2
+	check_input_genes "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+	cp [% levelId %].manta.annot.tsv [% levelId %].manta.annot.tag.tsv
+	if [ $? != 0 ]; then echo "ERROR : multmanta [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	tag_annotsv_in_candidate_genes "[% levelId %]" "manta" "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+
+else
+	echo "No variant detected" > [% levelId %].manta.annot.tag.tsv
+fi
+
+printf END >&2; uptime >&2
+date >&2

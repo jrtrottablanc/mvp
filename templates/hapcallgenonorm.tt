@@ -1,0 +1,108 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# HaplotypeCaller
+echo "# INFO - Running HaplotypeCaller ..." >&2
+if [ -f [% levelId %].[% chr %].g.vcf.gz ] || [ -f [% levelId %].[% chr %].g.geno.vcf.gz ]; then
+	echo "# INFO - gVCF [[% levelId %].[% chr %].g.vcf.gz] or VCF [[% levelId %].[% chr %].geno.norm.vcf.gz] already exist, skeeping this step" >&2
+else
+	mkdir gatktmp.[% chr %]
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${gatk4Cont} gatk HaplotypeCaller \
+	--tmp-dir gatktmp.[% chr %] \
+	--reference ${fasta} \
+	--emit-ref-confidence GVCF \
+	--dbsnp ${dbsnp} \
+	--minimum-mapping-quality 20 \
+	--intervals [% chr %] \
+	--output [% levelId %].[% chr %].g.vcf.gz \
+	--input [% input %]
+	if [ $? != 0 ]; then echo "ERROR : hapcallgenonorm [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	rm -rf gatktmp.[% chr %]
+fi
+
+# GenotypeGVCFs
+echo "# INFO - Running GenotypeGVFs ..." >&2
+if [ -f [% levelId %].[% chr %].g.geno.vcf.gz ]; then
+	echo "# INFO - VCF [[% levelId %].[% chr %].geno.norm.vcf.gz] already exists, skeeping this step" >&2
+else
+
+	# gVCF integrity
+	echo "# INFO - Checking gVCF integrity ..." >&2
+	/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% chr %].g.vcf.gz >&2
+	if [ $? != 0 ]; then echo "ERROR : hapcallgenonorm [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	# GenotypeGVCFs
+	echo "# INFO - Running GenotypeGVFs ..." >&2
+	mkdir gatktmp.[% chr %]
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${gatk4Cont} gatk GenotypeGVCFs \
+	--tmp-dir gatktmp.[% chr %] \
+	--reference ${fasta} \
+	--intervals [% chr %] \
+	--output [% levelId %].[% chr %].g.geno.vcf.gz \
+	--variant [% levelId %].[% chr %].g.vcf.gz
+	if [ $? != 0 ]; then echo "ERROR : hapcallgenonorm [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	rm -rf gatktmp.[% chr %]
+
+	# VCF integrity
+	echo "# INFO - Checking VCF integrity ..." >&2
+	/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% chr %].g.geno.vcf.gz >&2
+	if [ $? != 0 ]; then echo "ERROR : hapcallgenonorm [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+fi
+
+# BCFtools norm
+echo "# INFO - Running bcftools norm ..." >&2
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools norm \
+-m -both \
+-f ${fasta} \
+-O z \
+-o [% levelId %].[% chr %].g.geno.norm.vcf.gz \
+[% levelId %].[% chr %].g.geno.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : hapcallgenonorm [step#5] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF index
+echo "# INFO - Creating VCF indexes ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -f -p vcf [% levelId %].[% chr %].g.geno.norm.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : hapcallgenonorm [step#6] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF integrity
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% chr %].g.geno.norm.vcf.gz >&2
+if [ $? != 0 ]; then echo "ERROR : hapcallgenonorm [step#7] [${cmdFile}]" >> ${errLog}; exit 1; fi
+rawNumbar=$(zgrep -v "^#" [% levelId %].[% chr %].g.geno.vcf.gz | wc -l)
+normNumbar=$(zgrep -v "^#" [% levelId %].[% chr %].g.geno.norm.vcf.gz | wc -l)
+if [ $normNumbar -lt $rawNumbar ]; then
+	echo "ERROR : hapcallgenonorm [step#7] [${cmdFile}]" >> ${errLog}; exit 1
+fi
+
+# VCF stats
+echo "# INFO - Generating VCF basic stats ..." >&2
+echo -e "#barcode\tchr\tcntsnp\tcntindel" > [% levelId %].[% chr %].g.geno.norm.vcf.gz.stats
+cntsnp=$(apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools stats -r [% chr %] [% levelId %].[% chr %].g.geno.norm.vcf.gz | grep "^SN" | grep SNPs | cut -d ":" -f 2 | sed 's/\t//g')
+cntindel=$(apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools stats -r [% chr %] [% levelId %].[% chr %].g.geno.norm.vcf.gz | grep "^SN" | grep indels | cut -d ":" -f 2 | sed 's/\t//g')
+echo -e "[% levelId %]\t[% chr %]\t${cntsnp}\t${cntindel}" >> [% levelId %].[% chr %].g.geno.norm.vcf.gz.stats
+
+printf END >&2; uptime >&2
+date >&2

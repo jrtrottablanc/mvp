@@ -1,0 +1,63 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# report sheet
+echo "# INFO - Getting report information ..." >&2
+source [% inputSheet %]
+echo "# INFO - vcf = [% inputVCF %]" >&2
+echo "# INFO - project = ${analysisId}" >&2
+echo "# INFO - freeText = ${sampleName}_[% levelId %]" >&2
+echo "# INFO - startDate = ${RstartDate}" >&2
+echo "# INFO - piEmail = ${RpiEmail}" >&2
+echo "# INFO - piName = ${RpiName}" >&2
+echo "# INFO - covStats = /scratch_isilon/groups/pbt/data/QC/coverage/${RappStats}/${analysisId}/[% levelId %]/coverage_HQ/[% levelId %].sample.coverage.metrics.json" >&2
+echo "# INFO - covHist = /scratch_isilon/groups/pbt/data/QC/coverage/${RappStats}/${analysisId}/[% levelId %]/coverage_HQ/[% levelId %].sample.hist" >&2
+echo "# INFO - isEnac = ${RisEnac}" >&2
+echo "# INFO - app = ${RappReport}" >&2
+echo "# INFO - mvpConfig = ${mvpConfig}" >&2
+
+# reportmake
+echo "# INFO - Making report ..." >&2
+module purge >&2
+module use /software/dat/modules/all >&2
+module load ReportMake/1.0.3 >&2
+Report-Make \
+-v [% inputVCF %] \
+-p ${analysisId} \
+-f ${sampleName}_[% levelId %] \
+-startDate "$RstartDate" \
+-piEmail "$RpiEmail" \
+-piName "$RpiName" \
+-covStats /scratch_isilon/groups/pbt/data/QC/coverage/${RappStats}/${analysisId}/[% levelId %]/coverage_HQ/[% levelId %].sample.coverage.metrics.json \
+-covHist /scratch_isilon/groups/pbt/data/QC/coverage/${RappStats}/${analysisId}/[% levelId %]/coverage_HQ/[% levelId %].sample.hist \
+-covClass getcov \
+-isEnac ${RisEnac} \
+-a ${RappReport} \
+-mvpConfig ${mvpConfig}
+if [ $? != 0 ]; then echo "ERROR : reportmake [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+rm -r *report.aux *report_fig *report.lof *report.log *report.lot *report.out *report.Rnw *report.tex *report.toc titlePage.Rev*.tex Sweave.sty .tmp_*
+
+printf END >&2; uptime >&2
+date >&2

@@ -1,0 +1,35 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+if [ -f [% levelId %].allchr.g.geno.norm.ann.vcf.gz ]; then
+	echo "# INFO - Previous fake append already done!" >&2
+else
+	echo "# INFO - Copying fake append ..." >&2
+	cp -v [% inputVcf %] [% levelId %].allchr.g.geno.norm.ann.vcf.gz >&2
+	cp -v [% inputVcf %].tbi [% levelId %].allchr.g.geno.norm.ann.vcf.gz.tbi >&2
+fi
+
+printf END >&2; uptime >&2
+date >&2

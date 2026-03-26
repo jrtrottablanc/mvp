@@ -1,0 +1,49 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+for prs in BC_268 BC_313 OC_36 OC_400; do
+
+	# HaplotypeCaller
+	echo "# INFO - Running HaplotypeCaller for PRS [${prs}] ..." >&2
+	apptainer exec --no-home --bind ${bindDir} ${contDir}/${gatk4Cont} gatk HaplotypeCaller \
+	-R ${fasta} \
+	-I [% input %] \
+	-O [% levelId %].${prs}.vcf.gz \
+	--output-mode EMIT_ALL_ACTIVE_SITES \
+	--dbsnp ${pipeDir}/data/GUTIERREZSAR/${prs}_gnomAD4.1.checked.sorted.vcf.gz \
+	--alleles ${pipeDir}/data/GUTIERREZSAR/${prs}_gnomAD4.1.checked.sorted.vcf.gz \
+	-L ${pipeDir}/data/GUTIERREZSAR/${prs}.bed \
+	--force-call-filtered-alleles true
+	if [ $? != 0 ]; then echo "ERROR : gutierrezsarprs PRS [${prs}] [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	# VCF integrity
+	echo "# INFO - Checking VCF integrity for PRS [${prs}] ..." >&2
+	/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].${prs}.vcf.gz >&2
+	if [ $? != 0 ]; then echo "ERROR : gutierrezsarprs PRS [${prs}] [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+done
+
+printf END >&2; uptime >&2
+date >&2

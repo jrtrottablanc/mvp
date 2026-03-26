@@ -1,0 +1,47 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# input
+variants=$(for chr in [% chrList %]; do echo $chr; done | awk '{print "-I [% inputDir %]/[% levelId %]."$0".[% fileSuffix %] "}')
+
+# MergeVcfs
+echo "# INFO - Running GatherVcfs ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${gatk4Cont} gatk GatherVcfs \
+-O [% levelId %].allchr.[% fileSuffix %] \
+${variants};
+if [ $? != 0 ]; then echo "ERROR : gathervcf [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF indexes
+echo "# INFO - Creating VCF indexes ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf [% levelId %].allchr.[% fileSuffix %]
+if [ $? != 0 ]; then echo "ERROR : gathervcf [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF integrity
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].allchr.[% fileSuffix %] >&2
+if [ $? != 0 ]; then echo "ERROR : gathervcf [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

@@ -1,0 +1,491 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+#~ if [ "[% app %]" = "WGS" ]; then source ${confDir}/ressources_WGS.conf
+#~ else source ${confDir}/ressources_ROI.conf; fi
+
+#------------------#
+# annotshortvar    #
+#------------------#
+echo "# INFO - Submitting annotshortvar by chromosome ..." >&2
+unset annotshortvarJobIDs
+for chr in ${chrList}; do
+	stepDir="[% stepDir %]/annotshortvar"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %]_${chr}.annotshortvar"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${annotshortvar_qos} \
+	--define cpu=${annotshortvar_cpu} \
+	--define mem=${annotshortvar_mem} \
+	--define time="${annotshortvar_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define levelId=[% levelId %] \
+	--define input=[% pedDir %]/hapcallgenonorm/[% levelId %]/[% levelId %].${chr}.g.geno.norm.vcf.gz \
+	--define chr=${chr} \
+	${ttDir}/${annotshortvar_tt} > ${jobCmd}
+	annotshortvarJobIDs+=($(sbatch --parsable ${jobCmd}))
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${annotshortvarJobIDs[${#annotshortvarJobIDs[@]}-1]}" | tee -a ${jobLog} >&2
+done
+annotshortvarJobID=$(IFS=: ; echo "${annotshortvarJobIDs[*]}")
+
+#--------------------#
+# gathervcfpostannot #
+#--------------------#
+echo "# INFO - Submitting gathervcfpostannot ..." >&2
+stepDir="[% stepDir %]/gathervcfpostannot"
+mkdir -p ${stepDir} >&2
+jobLab="[% levelId %].gathervcfpostannot"
+jobCmd="${stepDir}/${jobLab}.cmd"
+jobLog="${stepDir}/${jobLab}.jobID.log"
+apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${gathervcf_qos} \
+--define cpu=${gathervcf_cpu} \
+--define mem=${gathervcf_mem} \
+--define time="${gathervcf_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define stepDir=${stepDir} \
+--define confFile=[% confFile %] \
+--define pedDir=[% pedDir %] \
+--define levelId=[% levelId %] \
+--define inputDir=[% pedDir %]/singshortvar/[% levelId %]/annotshortvar \
+--define fileSuffix="g.geno.norm.ann.vcf.gz" \
+--define chrList="${chrList}" \
+${ttDir}/${gathervcf_tt} > ${jobCmd}
+gathervcfpostannotJobID=$(sbatch --dependency=afterok:${annotshortvarJobID} --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${gathervcfpostannotJobID}" | tee -a ${jobLog} >&2
+
+#------------------#
+# spliceai         #
+#------------------#
+echo "# INFO - Submitting spliceai ..." >&2
+if [ "${spliceaiDb}" != "NA" ]; then
+	echo "# INFO - Submitting spliceairun by chromosome ..." >&2
+	unset spliceairunJobIDs
+	for chr in ${chrList}; do
+		stepDir="[% stepDir %]/spliceai"
+		mkdir -p ${stepDir} >&2
+		jobLab="[% levelId %]_${chr}.spliceairun"
+		jobCmd="${stepDir}/${jobLab}.cmd"
+		jobLog="${stepDir}/${jobLab}.jobID.log"
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+		--define qos=${spliceairun_qos} \
+		--define cpu=${spliceairun_cpu} \
+		--define mem=${spliceairun_mem} \
+		--define time="${spliceairun_time}" \
+		--define excludeNode=[% excludeNode %] \
+		--define jobLab=${jobLab} \
+		--define stepDir=${stepDir} \
+		--define confFile=[% confFile %] \
+		--define levelId=[% levelId %] \
+		--define input=[% pedDir %]/hapcallgenonorm/[% levelId %]/[% levelId %].${chr}.g.geno.norm.vcf.gz \
+		--define chr=${chr} \
+		${ttDir}/${spliceairun_tt} > ${jobCmd}
+		spliceairunJobIDs+=($(sbatch --parsable ${jobCmd}))
+		if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+		echo -e "${jobCmd}\t${spliceairunJobIDs[${#spliceairunJobIDs[@]}-1]}" | tee -a ${jobLog} >&2
+	done
+	spliceairunJobID=$(IFS=: ; echo "${spliceairunJobIDs[*]}")
+	
+	#--------------------#
+	# gathervcfspliceai  #
+	#--------------------#
+	echo "# INFO - Submitting gathervcfspliceai ..." >&2
+	stepDir="[% stepDir %]/spliceai"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %].gathervcfspliceai"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${gathervcf_qos} \
+	--define cpu=${gathervcf_cpu} \
+	--define mem=${gathervcf_mem} \
+	--define time="${gathervcf_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define pedDir=[% pedDir %] \
+	--define levelId=[% levelId %] \
+	--define inputDir=[% pedDir %]/singshortvar/[% levelId %]/spliceai \
+	--define fileSuffix="g.geno.norm.spliceai.vcf.gz" \
+	--define chrList="${chrList}" \
+	${ttDir}/${gathervcf_tt} > ${jobCmd}
+	gathervcfspliceaiJobID=$(sbatch --dependency=afterok:${spliceairunJobID} --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${gathervcfspliceaiJobID}" | tee -a ${jobLog} >&2
+else
+	echo "# INFO - SpliceAI database not available into configuration file [[% confFile %]], skipping spliceai" >&2
+fi
+
+#------------------#
+# intervar         #
+#------------------#
+echo "# INFO - Submitting intervar ..." >&2
+if [ "${intervarDb}" != "NA" ]; then
+	module purge >&2
+	module load Python/3.9.6-GCCcore-11.2.0 >&2
+	module load SciPy-bundle/2021.10-foss-2021b >&2
+	source /scratch_isilon/groups/dat/apps/INTERVARTOOLS/intervartools_venv/bin/activate >&2
+	stepDir="[% stepDir %]/intervar"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %]_runInterVar"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	/scratch_isilon/groups/dat/apps/INTERVARTOOLS/InterVarTools runInterVar \
+	-I [% pedDir %]/gathervcfpreannot/[% levelId %]/[% levelId %].allchr.g.geno.norm.vcf.gz \
+	-B [% levelId %] \
+	-iv /opt/InterVar-2.2.1/Intervar.py \
+	-idp /scratch_isilon/groups/dat/data/Intervar/20220217/intervardb/ \
+	-adp /scratch_isilon/groups/dat/data/ANNOVAR/20220217/humandb/ \
+	-ct /scratch_isilon/groups/dat/apps/INTERVARTOOLS/ritv.jtt \
+	-r ${intervarDb} \
+	-iai ${contDir}/${intervarCont} \
+	-c ${intervarrun_cpu} \
+	-p genD \
+	-t ${intervarrun_time} \
+	-q ${intervarrun_qos} \
+	-d ${stepDir} \
+	-en [% excludeNode %]
+
+# Below was testing for ONT
+#	-v /scratch_isilon/groups/dat/apps/INTERVARTOOLS/vcf2annovar_devel.py \
+#	-en [% excludeNode %]
+
+	if [ ! -z "[% gathervcfpreannotJobID %]" ]; then
+		intervarrunJobid=$(sbatch --dependency=afterok:[% gathervcfpreannotJobID %] --parsable ${jobCmd})
+	else
+		intervarrunJobid=$(sbatch --parsable ${jobCmd})
+	fi
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${intervarrunJobid}" | tee -a ${jobLog} >&2
+	deactivate
+	module purge >&2 
+else
+	echo "# INFO - Intervar database not available into configuration file [[% confFile %]], skipping intervar" >&2
+fi
+
+#------------------#
+# spliceaiappend   #
+#------------------#
+if [ "${spliceaiDb}" != "NA" ]; then
+	echo "# INFO - Submitting spliceaiappend ..." >&2
+	stepDir="[% stepDir %]/append"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %].spliceaiappend"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${spliceaiappend_qos} \
+	--define cpu=${spliceaiappend_cpu} \
+	--define mem=${spliceaiappend_mem} \
+	--define time="${spliceaiappend_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define pedDir=[% pedDir %] \
+	--define levelId=[% levelId %] \
+	--define inputVcf=[% pedDir %]/singshortvar/[% levelId %]/gathervcfpostannot/[% levelId %].allchr.g.geno.norm.ann.vcf.gz \
+	--define inputSpliceai=[% pedDir %]/singshortvar/[% levelId %]/spliceai/[% levelId %].allchr.g.geno.norm.spliceai.vcf.gz \
+	${ttDir}/${spliceaiappend_tt} > ${jobCmd}
+	spliceaiappendJobID=$(sbatch --dependency=afterok:${gathervcfpostannotJobID}:${gathervcfspliceaiJobID} --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${spliceaiappendJobID}" | tee -a ${jobLog} >&2
+else
+	echo "# INFO - Submitting fakeappend ..." >&2
+	stepDir="[% stepDir %]/append"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %].fakeappend"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${fakeappend_qos} \
+	--define cpu=${fakeappend_cpu} \
+	--define mem=${fakeappend_mem} \
+	--define time="${fakeappend_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define pedDir=[% pedDir %] \
+	--define levelId=[% levelId %] \
+	--define inputVcf=[% pedDir %]/singshortvar/[% levelId %]/gathervcfpostannot/[% levelId %].allchr.g.geno.norm.ann.vcf.gz \
+	${ttDir}/${fakeappend_tt} > ${jobCmd}
+	spliceaiappendJobID=$(sbatch --dependency=afterok:${gathervcfpostannotJobID} --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${spliceaiappendJobID}" | tee -a ${jobLog} >&2
+fi
+
+#------------------#
+# intervarappend   #
+#------------------#
+if [ "${intervarDb}" != "NA" ]; then
+	echo "# INFO - Submitting intervarappend ..." >&2
+	stepDir="[% stepDir %]/append"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %].intervarappend"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${intervarappend_qos} \
+	--define cpu=${intervarappend_cpu} \
+	--define mem=${intervarappend_mem} \
+	--define time="${intervarappend_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define pedDir=[% pedDir %] \
+	--define levelId=[% levelId %] \
+	--define inputVcf=[% pedDir %]/singshortvar/[% levelId %]/append/[% levelId %].allchr.g.geno.norm.ann.vcf.gz \
+	--define inputAnno=[% pedDir %]/singshortvar/[% levelId %]/intervar/[% levelId %].Intervar.${intervarDb}_multianno.txt.intervar \
+	--define inputIdf=[% pedDir %]/singshortvar/[% levelId %]/intervar/[% levelId %].avinput.indels_dict.txt \
+	${ttDir}/${intervarappend_tt} > ${jobCmd}
+	intervarappendJobID=$(sbatch --dependency=afterok:${gathervcfpostannotJobID}:${intervarrunJobid}:${spliceaiappendJobID} --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${intervarappendJobID}" | tee -a ${jobLog} >&2
+else
+	echo "# INFO - Submitting fakeappend ..." >&2
+	stepDir="[% stepDir %]/append"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %].fakeappend"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${fakeappend_qos} \
+	--define cpu=${fakeappend_cpu} \
+	--define mem=${fakeappend_mem} \
+	--define time="${fakeappend_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define pedDir=[% pedDir %] \
+	--define levelId=[% levelId %] \
+	--define inputVcf=[% pedDir %]/singshortvar/[% levelId %]/append/[% levelId %].allchr.g.geno.norm.ann.vcf.gz \
+	${ttDir}/${fakeappend_tt} > ${jobCmd}
+	intervarappendJobID=$(sbatch --dependency=afterok:${gathervcfpostannotJobID}:${spliceaiappendJobID} --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${intervarappendJobID}" | tee -a ${jobLog} >&2
+fi
+
+#------------------#
+# tagfilt          #
+#------------------#
+echo "# INFO - Submitting tagfilt ..." >&2
+stepDir="[% stepDir %]/tagfilt"
+mkdir -p ${stepDir} >&2
+jobLab="[% levelId %].tagfilt"
+jobCmd="${stepDir}/${jobLab}.cmd"
+jobLog="${stepDir}/${jobLab}.jobID.log"
+apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${tagfilt_qos} \
+--define cpu=${tagfilt_cpu} \
+--define mem=${tagfilt_mem} \
+--define time="${tagfilt_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define stepDir=${stepDir} \
+--define confFile=[% confFile %] \
+--define pedDir=[% pedDir %] \
+--define levelId=[% levelId %] \
+--define input="[% pedDir %]/singshortvar/[% levelId %]/append/[% levelId %].allchr.g.geno.norm.ann.vcf.gz" \
+--define app="[% app %]" \
+${ttDir}/${tagfilt_tt} > ${jobCmd}
+tagfiltJobID=$(sbatch --dependency=afterok:${intervarappendJobID} --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${tagfiltJobID}" | tee -a ${jobLog} >&2
+
+#------------------#
+# vcf2tab          #
+#------------------#
+echo "# INFO - Submitting vcf2tab ..." >&2
+stepDir="[% stepDir %]/tagfilt"
+mkdir -p ${stepDir} >&2
+jobLab="[% levelId %].vcf2tab"
+jobCmd="${stepDir}/${jobLab}.cmd"
+jobLog="${stepDir}/${jobLab}.jobID.log"
+apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${vcf2tab_qos} \
+--define cpu=${vcf2tab_cpu} \
+--define mem=${vcf2tab_mem} \
+--define time="${vcf2tab_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define stepDir=${stepDir} \
+--define confFile=[% confFile %] \
+--define pedDir=[% pedDir %] \
+--define levelId=[% levelId %] \
+--define input=[% pedDir %]/singshortvar/[% levelId %]/tagfilt/[% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz \
+${ttDir}/${vcf2tab_tt} > ${jobCmd}
+vcf2tabJobID=$(sbatch --dependency=afterok:${tagfiltJobID} --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${vcf2tabJobID}" | tee -a ${jobLog} >&2
+
+#------------------#
+# reportmake       #
+#------------------#
+echo "# INFO - Submitting reportmake ..." >&2
+if [ -f [% pedDir %]/rawdata/[% levelId %]/[% levelId %].reportSheet.conf ]; then
+	stepDir="[% stepDir %]/tagfilt"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %].reportmake"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${reportmake_qos} \
+	--define cpu=${reportmake_cpu} \
+	--define mem=${reportmake_mem} \
+	--define time="${reportmake_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define levelId=[% levelId %] \
+	--define inputVCF=[% pedDir %]/singshortvar/[% levelId %]/tagfilt/[% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz \
+	--define inputSheet=[% pedDir %]/rawdata/[% levelId %]/[% levelId %].reportSheet.conf \
+	${ttDir}/${reportmake_tt} > ${jobCmd}
+	reportmakeJobID=$(sbatch --dependency=afterok:${tagfiltJobID} --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${reportmakeJobID}" | tee -a ${jobLog} >&2
+else
+	echo "# INFO - Not a CNAG production experiment, [% levelId %].reportSheet.conf does not exist in rawdata, skipping reportmake" | tee -a ${stepDir}/reportmake.log >&2
+fi
+
+#------------------#
+# hardfilt         #
+#------------------#
+echo "# INFO - Submitting hardfilt candigene ..." >&2
+stepDir="[% stepDir %]/tagfilt"
+mkdir -p ${stepDir} >&2
+jobLab="[% levelId %].hardfilt.candigene"
+jobCmd="${stepDir}/${jobLab}.cmd"
+jobLog="${stepDir}/${jobLab}.jobID.log"
+apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${hardfilt_qos} \
+--define cpu=${hardfilt_cpu} \
+--define mem=${hardfilt_mem} \
+--define time="${hardfilt_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define stepDir=${stepDir} \
+--define confFile=[% confFile %] \
+--define pedDir=[% pedDir %] \
+--define levelId=[% levelId %] \
+--define input=[% pedDir %]/singshortvar/[% levelId %]/tagfilt/[% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz \
+--define inputType="vcf" \
+--define filters="candigene" \
+${ttDir}/${hardfilt_tt} > ${jobCmd}
+hardfiltJobID=$(sbatch --dependency=afterok:${tagfiltJobID} --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${hardfiltJobID}" | tee -a ${jobLog} >&2
+
+#------------------#
+# vcf2tab          #
+#------------------#
+echo "# INFO - Submitting vcf2tab candigene ..." >&2
+stepDir="[% stepDir %]/tagfilt"
+mkdir -p ${stepDir} >&2
+jobLab="[% levelId %].vcf2tab.candigene"
+jobCmd="${stepDir}/${jobLab}.cmd"
+jobLog="${stepDir}/${jobLab}.jobID.log"
+apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${vcf2tab_qos} \
+--define cpu=${vcf2tab_cpu} \
+--define mem=${vcf2tab_mem} \
+--define time="${vcf2tab_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define stepDir=${stepDir} \
+--define confFile=[% confFile %] \
+--define pedDir=[% pedDir %] \
+--define levelId=[% levelId %] \
+--define input=[% pedDir %]/singshortvar/[% levelId %]/tagfilt/[% levelId %].allchr.g.geno.norm.ann.tag.candigene.vcf.gz \
+${ttDir}/${vcf2tab_tt} > ${jobCmd}
+vcf2tabcandigeneJobID=$(sbatch --dependency=afterok:${hardfiltJobID} --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${vcf2tabcandigeneJobID}" | tee -a ${jobLog} >&2
+
+#----------------------#
+# spliceairuncandigene #
+#----------------------#
+if [ "${spliceairuncandigene}" = "T" ]; then 
+	echo "# INFO - Submitting spliceairuncandigene ..." >&2
+	stepDir="[% stepDir %]/tagfilt"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %].spliceairuncandigene"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${spliceairuncandigene_qos} \
+	--define cpu=${spliceairuncandigene_cpu} \
+	--define mem=${spliceairuncandigene_mem} \
+	--define time="${spliceairuncandigene_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define pedDir=[% pedDir %] \
+	--define levelId=[% levelId %] \
+	--define input=[% pedDir %]/singshortvar/[% levelId %]/tagfilt/[% levelId %].allchr.g.geno.norm.ann.tag.candigene.vcf.gz \
+	${ttDir}/${spliceairuncandigene_tt} > ${jobCmd}
+	spliceairuncandigeneJobID=$(sbatch --dependency=afterok:${hardfiltJobID} --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${spliceairuncandigeneJobID}" | tee -a ${jobLog} >&2
+	
+	echo "# INFO - Submitting vcf2tab spliceairuncandigene ..." >&2
+	stepDir="[% stepDir %]/tagfilt"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %].vcf2tab.spliceairuncandigene"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${vcf2tab_qos} \
+	--define cpu=${vcf2tab_cpu} \
+	--define mem=${vcf2tab_mem} \
+	--define time="${vcf2tab_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define pedDir=[% pedDir %] \
+	--define levelId=[% levelId %] \
+	--define input=[% pedDir %]/singshortvar/[% levelId %]/tagfilt/[% levelId %].allchr.g.geno.norm.ann.tag.candigene.spliceai.vcf.gz \
+	${ttDir}/${vcf2tab_tt} > ${jobCmd}
+	vcf2tabspliceairuncandigeneJobID=$(sbatch --dependency=afterok:${spliceairuncandigeneJobID} --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${vcf2tabspliceairuncandigeneJobID}" | tee -a ${jobLog} >&2
+fi
+
+printf END >&2; uptime >&2
+date >&2

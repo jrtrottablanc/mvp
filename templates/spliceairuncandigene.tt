@@ -1,0 +1,53 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# copy input and rename as tmp
+echo "# INFO - Copying input files and renaming as temporary file ..." >&2
+cp -v [% input %] [% levelId %].allchr.g.geno.norm.ann.tag.candigene.spliceai.TMP.vcf.gz >&2
+cp -v [% input %].tbi [% levelId %].allchr.g.geno.norm.ann.tag.candigene.spliceai.TMP.vcf.gz.tbi >&2
+
+# spliceai
+echo "# INFO - Computing spliceai ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${spliceaiCont} spliceai \
+-I [% levelId %].allchr.g.geno.norm.ann.tag.candigene.spliceai.TMP.vcf.gz \
+-O [% levelId %].allchr.g.geno.norm.ann.tag.candigene.spliceai.vcf.gz \
+-R ${fasta} \
+-A ${spliceairuncandigeneDb} \
+-D ${spliceaiMD} \
+-M ${spliceaiMS}
+if [ $? != 0 ]; then echo "ERROR : spliceairuncandigene [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF indexes
+echo "# INFO - Creating VCF indexes ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf [% levelId %].allchr.g.geno.norm.ann.tag.candigene.spliceai.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : spliceairuncandigene [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF integrity
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].allchr.g.geno.norm.ann.tag.candigene.spliceai.vcf.gz >&2
+if [ $? != 0 ]; then echo "ERROR : spliceairuncandigene [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

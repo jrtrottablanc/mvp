@@ -1,0 +1,129 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %] 
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${funcDir}/candidateGenes.sh
+
+module purge >&2
+module use /software/dat/modules/all >&2
+module load manta/1.6.0-GCC-10.2.0-Python-2.7.18 >&2
+
+# conf manta
+echo "# INFO - Configuring manta ..." >&2
+if [ "[% app %]" = "WGS" ]; then
+        exomeFlag=""
+else
+        exomeFlag="--exome"
+fi
+configManta.py ${exomeFlag} \
+--referenceFasta ${fasta} \
+--callRegions ${mantaCallBed} \
+--runDir [% stepDir %] \
+--bam [% input %]
+if [ $? != 0 ]; then echo "ERROR : singmanta [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# run manta
+echo "# INFO - Running manta ..." >&2
+python [% stepDir %]/runWorkflow.py -m local -j [% cpu %]
+if [ $? != 0 ]; then echo "ERROR : singmanta [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+if [ "$(zgrep -v "^#" [% stepDir %]/results/variants/diploidSV.vcf.gz | wc -l)" -ne 0 ]; then
+	
+	# centralize results
+	echo "# INFO - Copying manta raw output into centralized folder ..." >&2
+	mkdir -p ${mantaPath}/${analysisId}
+	cp -v [% stepDir %]/results/variants/diploidSV.vcf.gz ${mantaPath}/${analysisId}/[% levelId %].diploidSV.vcf.gz
+
+	# annotsv
+	echo "# INFO - Annotating with annotsv ..." >&2
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${annotsvCont} AnnotSV \
+	-annotationMode both \
+	-SVinputFile [% stepDir %]/results/variants/diploidSV.vcf.gz \
+	-outputDir [% stepDir %]/ \
+	-outputFile [% levelId %].manta.annot.tsv \
+	-genomeBuild ${annotsvRef} \
+	-tx ${annotsvDb} \
+	-SVminSize 5 \
+	-annotationsDir ${annotsvAnnotDir} \
+	-variantconvertDir /scratch_isilon/groups/dat/apps/VARIANTCONVERT/2.0.1/ \
+	-vcf 1 \
+	-variantconvertMode full \
+	-SVinputInfo 1 \
+	-includeCI 0 \
+	-overlap 100 \
+	-reciprocal 1 \
+	> [% levelId %].manta.annotsv.log
+	if [ $? != 0 ]; then echo "ERROR : singmanta [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	# candidate genes
+	echo "# INFO - Tagging candidate genes ..." >&2
+	check_input_genes "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+	cp [% levelId %].manta.annot.tsv [% levelId %].manta.annot.tag.tsv
+	if [ $? != 0 ]; then echo "ERROR : singmanta [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	tag_annotsv_in_candidate_genes "[% levelId %]" "manta" "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+	
+	cat [% levelId %].manta.annot.tag.tsv | wc -l > [% levelId %].manta.annot.tag.cntvar
+	
+	# visualization track
+	if [ "${var2trackManta}" != "NA" ]; then
+		# full annotation only
+		echo "# INFO - Getting 'full' annotation only ..." >&2
+		grep -e 'Annotation_mode' -e "\sfull\s" [% levelId %].manta.annot.tag.tsv > [% levelId %].manta.annot.tag.full.tsv
+		if [ $? != 0 ]; then echo "ERROR : singmanta [step#5] [${cmdFile}]" >> ${errLog}; exit 1; fi
+		
+		# variantconvert
+		module purge >&2
+		module load Python/3.10.8 >&2
+		source /scratch_isilon/groups/dat/apps/VARIANTCONVERT/1.2.2/variantconvert_venv/bin/activate >&2
+		export TMPDIR=/scratch_isilon/groups/dat/apps/MVPGermline/tmpdir
+		echo "# INFO - Creating visualization track ..." >&2
+		variantconvert convert \
+		-i [% levelId %].manta.annot.tag.full.tsv \
+		-o [% levelId %].manta.annot.tag.full.vcf \
+		-fi AnnotSV \
+		-fo VCF \
+		-c ${confDir}/${var2trackManta}
+		if [ $? != 0 ]; then echo "ERROR : singmanta [step#6] [${cmdFile}]" >> ${errLog}; exit 1; fi
+		deactivate
+		module purge >&2
+
+		# VCF compress
+		echo "INFO - Compressing VCF ..." >&2
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -f [% levelId %].manta.annot.tag.full.vcf
+		if [ $? != 0 ]; then echo "ERROR : singmanta [step#7] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+		# VCF indexes
+		echo "INFO - Creating VCF indexes ..." >&2
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -f -p vcf [% levelId %].manta.annot.tag.full.vcf.gz
+		if [ $? != 0 ]; then echo "ERROR : singmanta [step#8] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	else
+		echo "Undefined var2trackManta [${var2trackManta}], skipping visualization track creation" > [% levelId %].manta.annot.tag.full.log
+	fi
+
+else
+	echo "No variant detected" > [% levelId %].manta.annot.tag.tsv
+	echo "0" > [% levelId %].manta.annot.tag.cntvar
+fi
+
+printf END >&2; uptime >&2
+date >&2

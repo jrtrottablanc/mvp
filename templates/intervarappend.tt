@@ -1,0 +1,62 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# copy input and rename as tmp
+echo "# INFO - Copying input files and renaming as temporary file ..." >&2
+cp -v [% inputVcf %] [% levelId %].allchr.g.geno.norm.ann.TMP.vcf.gz >&2
+cp -v [% inputVcf %].tbi [% levelId %].allchr.g.geno.norm.ann.TMP.vcf.gz.tbi >&2
+
+# append intervar
+echo "# INFO - Appending intervar ..." >&2
+module purge >&2
+module load Python/3.9.6-GCCcore-11.2.0 >&2
+module load SciPy-bundle/2021.10-foss-2021b >&2
+source /scratch_isilon/groups/dat/apps/INTERVARTOOLS/intervartools_venv/bin/activate >&2
+/scratch_isilon/groups/dat/apps/INTERVARTOOLS/appendintervar.py \
+-I [% inputAnno %] \
+-i [% levelId %].allchr.g.geno.norm.ann.TMP.vcf.gz \
+-idf [% inputIdf %] ${intervarappendChr} \
+-o [% levelId %].allchr.g.geno.norm.ann.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : intervarappend [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+deactivate
+module purge >&2
+	
+# VCF indexes
+echo "# INFO - Creating VCF indexes ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf [% levelId %].allchr.g.geno.norm.ann.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : intervarappend [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF integrity
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].allchr.g.geno.norm.ann.vcf.gz >&2
+if [ $? != 0 ]; then echo "ERROR : intervarappend [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# clean tmp
+echo "# INFO - Cleaning temporary file ..." >&2
+rm -v [% levelId %].allchr.g.geno.norm.ann.TMP.vcf.gz >&2
+rm -v [% levelId %].allchr.g.geno.norm.ann.TMP.vcf.gz.tbi >&2
+
+printf END >&2; uptime >&2
+date >&2

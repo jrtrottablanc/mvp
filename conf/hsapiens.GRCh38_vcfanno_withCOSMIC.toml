@@ -1,0 +1,61 @@
+# Annotations with DBNSFP 4.5a
+[[annotation]]
+file="/scratch_isilon/groups/dat/data/dbNSFP/4.5a/dbNSFP4.5a_variant_allchr.chr.vcf.gz"
+names=["rs_dbSNP","SIFT_score","SIFT_pred","Polyphen2_HDIV_score","Polyphen2_HDIV_pred","Polyphen2_HVAR_score","Polyphen2_HVAR_pred","LRT_score","LRT_pred","MutationTaster_score","MutationTaster_pred","MutationAssessor_score","MutationAssessor_pred","CADD_phred","GERPplus_NR","GERPplus_RS","phyloP46way_primate","phyloP46way_placental","phyloP100way_vertebrate","phastCons46way_primate","phastCons46way_placental","phastCons100way_vertebrate","SiPhy_29way_pi","SiPhy_29way_logOdds","LRT_Omega","G1KGp1_AF","G1KGp1_AFR_AF","G1KGp1_EUR_AF","G1KGp1_AMR_AF","G1KGp1_ASN_AF","ESP6500_AA_AF","ESP6500_EA_AF","ARIC5606_AA_AF","ARIC5606_EA_AF","ExAC_AF","ExAC_Adj_AF","clinvar_rs","clinvar_clnsig","clinvar_trait","COSMIC_ID","COSMIC_CNT","AlphaMissense_score","MetaRNN_score","BayesDel_addAF_score","BayesDel_noAF_score","PrimateAI_score","AlphaMissense_rankscore","VARITY_R_LOO_rankscore","DEOGEN2_rankscore","LRT_converted_rankscore","fathmmXF_coding_rankscore","phastCons100way_vertebrate_rankscore","GERPplus_RS_rankscore","phyloP17way_primate_rankscore","MPC_rankscore","FATHMM_converted_rankscore","PROVEAN_converted_rankscore"]
+fields=["rs_dbSNP","SIFT_score","SIFT_pred","Polyphen2_HDIV_score","Polyphen2_HDIV_pred","Polyphen2_HVAR_score","Polyphen2_HVAR_pred","LRT_score","LRT_pred","MutationTaster_score","MutationTaster_pred","MutationAssessor_score","MutationAssessor_pred","CADD_phred","GERP++_NR","GERP++_RS","phyloP46way_primate","phyloP46way_placental","phyloP100way_vertebrate","phastCons46way_primate","phastCons46way_placental","phastCons100way_vertebrate","SiPhy_29way_pi","SiPhy_29way_logOdds","LRT_Omega","1000Gp1_AF","1000Gp1_AFR_AF","1000Gp1_EUR_AF","1000Gp1_AMR_AF","1000Gp1_ASN_AF","ESP6500_AA_AF","ESP6500_EA_AF","ARIC5606_AA_AF","ARIC5606_EA_AF","ExAC_AF","ExAC_Adj_AF","clinvar_rs","clinvar_clnsig","clinvar_trait","COSMIC_ID","COSMIC_CNT","AlphaMissense_score","MetaRNN_score","BayesDel_addAF_score","BayesDel_noAF_score","PrimateAI_score","AlphaMissense_rankscore","VARITY_R_LOO_rankscore","DEOGEN2_rankscore","LRT_converted_rankscore","fathmm-XF_coding_rankscore","phastCons100way_vertebrate_rankscore","GERP++_RS_rankscore","phyloP17way_primate_rankscore","MPC_rankscore","FATHMM_converted_rankscore","PROVEAN_converted_rankscore"]
+ops=["self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self"]
+
+## Annotation with GnomAD4.1.0
+[[annotation]]
+file="/scratch_isilon/groups/dat/data/GNOMAD/4.1.0/GRCh38/JointFrequencies/gnomad.joint.v4.1.sites.allchr.vcf.gz"
+names=["AC_gnomAD","AC_grpmax","AC_XX","AC_XY","AN_gnomAD","AN_grpmax","AN_XX","AN_XY","grpmax","gnomAD_CMH_p_value","nhomalt","nhomalt_grpmax","fafmax_faf95_max","fafmax_faf95_max_gen_anc"]
+fields=["gnomAD_AC_joint","gnomAD_AC_grpmax_joint","gnomAD_AC_joint_XX","gnomAD_AC_joint_XY","gnomAD_AN_joint","gnomAD_AN_grpmax_joint","gnomAD_AN_joint_XX","gnomAD_AN_joint_XY","gnomAD_grpmax_joint","gnomAD_CMH_p_value","gnomAD_nhomalt_joint","gnomAD_nhomalt_grpmax_joint","gnomAD_nhomalt_joint_XX","gnomAD_nhomalt_joint_XY"]
+ops=["self","self","self","self","self","self","self","self","self","self","self","self","self","self"]
+
+## Annotations with ClinVar (downloaded monthly)
+[[annotation]]
+file="/scratch_isilon/groups/dat/data/CLINVAR/clinvar_GRCh38.vcf.gz"
+fields=["AF_ESP","AF_EXAC","AD_TGP","ALLELEID","CLNDN","CLNDNINCL","CLNDISDB","CLNDISDBINCL","CLNHGVS","CLNREVSTAT","CLNSIG","CLNSIGCONF","CLNSIGINCL","CLNVC","CLNVCSO","CLNVI","ONCDN","ONCDNINCL","ONCDISDB","ONCDISDBINCL","ONC","ONCINCL","ONCREVSTAT","ONCCONF","ORIGIN","RS","SCIDN","SCIDNINCL","SCIDISDB","SCIDISDBINCL","SCIREVSTAT","SCI","SCIINCL"]
+ops=["self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self","self"]
+
+# Annotations with CADD 1.7
+[[annotation]]
+file="/scratch_isilon/groups/dat/data/CADD/v1.7/GRCh38/allchr.CADD17ge10.chr.vcf.gz"
+fields=['CADD17_PHRED']
+ops=["self"]
+
+# Annotations with REVEL 1.3
+[[annotation]]
+file="/scratch_isilon/groups/dat/data/REVEL/1.3/REVEL_1.3.GRCh38.allchr.vcf.gz"
+fields=['REVEL_score']
+ops=["self"]
+
+## Annotations with Cosmic_GenomeScreensMutant_v101_GRCh38.vcf.gz
+[[annotation]]
+file="/scratch_isilon/groups/dat/data/COSMIC/v101/GRCh38/Cosmic_CompleteTargetedScreensMutant_v101_GRCh38.vcf.gz"
+fields=['LEGACY_ID']
+ops=["self"]
+
+## Annotations with Cosmic_GenomeScreensMutant_v101_GRCh38.vcf.gz
+[[annotation]]
+file="/scratch_isilon/groups/dat/data/COSMIC/v101/GRCh38/Cosmic_GenomeScreensMutant_v101_GRCh38.vcf.gz"
+fields=['LEGACY_ID']
+ops=["self"]
+
+## Annotations with Cosmic_NonCodingVariants_v101_GRCh38.vcf.gz
+[[annotation]]
+file="/scratch_isilon/groups/dat/data/COSMIC/v101/GRCh38/Cosmic_NonCodingVariants_v101_GRCh38.vcf.gz"
+fields=['LEGACY_ID']
+ops=["self"]
+ 
+# Annotations with CIViC - monthly updates
+[[annotation]]
+file="/scratch_isilon/groups/dat/data/CIViC/civic_hg38.chr.vcf.gz"
+fields = ['VT','CSQ']
+ops = ["self","self"]
+
+# Annotations with SpliceAI 1.3
+[[annotation]]
+file="/scratch_isilon/groups/dat/data/SPLICEAI/1.3/spliceai_scores.raw.snv.indel.hg38.hardFilter_0.1.vcf.gz"
+fields=['SpliceAI']
+ops=["self"]

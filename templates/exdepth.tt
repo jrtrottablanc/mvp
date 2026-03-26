@@ -1,0 +1,112 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+#~ source ${confDir}/ressources_ROI.conf
+
+source ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf
+
+# centralized folder
+echo "# INFO - Creating centralized folder to store intermediate files ..." >&2
+mkdir -p ${exdepthPath}
+echo "${exdepthPath}" >&2
+touch ${exdepthPath}/flag
+if [ $? != 0 ]; then echo "ERROR : exdepth [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# exdepthprep
+echo "# INFO - Submitting exdepthprep by sample ..." >&2
+while read pedigree sample app sex BCAM GVCF VCF; do
+	jobLab="${sample}.exdepthprep"
+	jobCmd="[% stepDir %]/${jobLab}.cmd"
+	jobLog="[% stepDir %]/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${exdepthprep_qos} \
+	--define cpu=${exdepthprep_cpu} \
+	--define mem=${exdepthprep_mem} \
+	--define time="${exdepthprep_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define confFile=[% confFile %] \
+	--define stepDir=[% stepDir %] \
+	--define input=${BCAM} \
+	--define exdepthRef=${exdepthRef} \
+	--define exdepthPath=${exdepthPath} \
+	--define roiBed=${roiBed} \
+	--define sex=${sex} \
+	--define levelId=${sample} \
+	${ttDir}/${exdepthprep_tt} > ${jobCmd}
+	exdepthprepJobIDs+=($(sbatch --parsable ${jobCmd}))
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${exdepthprepJobIDs[${#exdepthprepJobIDs[@]}-1]}" | tee -a ${jobLog} >&2
+done < <(grep "\s[% app %]\s" [% sheetDir %]/[% levelId %]_samples_rawdata.tsv)
+
+# exdepthlink
+echo "# INFO - Submitting exdepthlink ..." >&2
+jobLab="[% app %].exdepthlink"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${exdepthlink_qos} \
+--define cpu=${exdepthlink_cpu} \
+--define mem=${exdepthlink_mem} \
+--define time="${exdepthlink_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define exdepthPath=${exdepthPath} \
+${ttDir}/${exdepthlink_tt} > ${jobCmd}
+exdepthprepJobID=$(IFS=: ; echo "${exdepthprepJobIDs[*]}")
+exdepthlinkJobID=$(sbatch --dependency=afterok:${exdepthprepJobID} --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${exdepthlinkJobID}" | tee -a ${jobLog} >&2
+
+# exdepthrun
+echo "# INFO - Submitting exdepthrun by sample ..." >&2
+while read pedigree sample app sex BCAM GVCF VCF; do
+	jobLab="${sample}.exdepthrun"
+	jobCmd="[% stepDir %]/${jobLab}.cmd"
+	jobLog="[% stepDir %]/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${exdepthrun_qos} \
+	--define cpu=${exdepthrun_cpu} \
+	--define mem=${exdepthrun_mem} \
+	--define time="${exdepthrun_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define confFile=[% confFile %] \
+	--define stepDir=[% stepDir %] \
+	--define exdepthRef=${exdepthRef} \
+	--define exdepthPath=${exdepthPath} \
+	--define roiBed=${roiBed} \
+	--define levelId=${sample} \
+	--define app=[% app %] \
+	${ttDir}/${exdepthrun_tt} > ${jobCmd}
+	exdepthrunJobID=($(sbatch --dependency=afterok:${exdepthlinkJobID} --parsable ${jobCmd}))
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${exdepthrunJobID}" | tee -a ${jobLog} >&2
+done < <(grep "\s[% app %]\s" [% sheetDir %]/[% levelId %]_samples_rawdata.tsv)
+
+printf END >&2; uptime >&2
+date >&2

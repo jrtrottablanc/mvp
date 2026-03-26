@@ -1,0 +1,36 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+echo "# INFO - Running cramToolsCNAG ..." >&2
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${cramtoolsCont} \
+/cramToolsCNAG.py \
+-I [% input %] \
+-O [% levelId %].igv.cram \
+-R ${fasta} \
+--applyThresholdToBaseQualities -T 17 -F BD BI OQ
+if [ $? != 0 ]; then echo "ERROR : igvcram [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

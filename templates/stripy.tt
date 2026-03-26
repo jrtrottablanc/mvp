@@ -1,0 +1,61 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# sex param
+echo "# INFO - Defining sex ..." >&2
+if [ "[% sex %]" = 1 ]; then
+	sex='male'
+	echo "# INFO - Sample is male" >&2
+elif [ "[% sex %]" = 2 ]; then
+	sex='female'
+	echo "# INFO - Sample is female" >&2
+else
+	sex='male'
+	echo "# INFO - Sample is neither male or female, male will be used" >&2
+fi
+
+echo "# INFO - Running stripy-pipeline ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${stripyCont} python3 /usr/local/bin/stripy-pipeline/stri.py \
+--input [% input %] \
+--genome ${stripyDb} \
+--reference ${fasta} \
+--output [% stepDir %] \
+--locus ${stripyGene} \
+--config ${confDir}/stripy.conf \
+--logflags [% levelId %].stripy.log \
+--catalog ${stripyCatalog} \
+--sex ${sex}
+if [ $? != 0 ]; then echo "ERROR : stripy [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi 
+
+BCAMname=$(basename "[% input %]")
+BCAMext="${BCAMname##*.}"
+
+echo "# INFO - Renaming output ..." >&2
+mv -v [% levelId %].${BCAMext}.json [% levelId %].stripy.json >&2
+mv -v [% levelId %].${BCAMext}.tsv [% levelId %].stripy.tsv >&2
+mv -v [% levelId %].${BCAMext}.html [% levelId %].stripy.html >&2
+
+printf END >&2; uptime >&2
+date >&2

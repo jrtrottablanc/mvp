@@ -1,0 +1,1143 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% anaDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% anaDir %]/[% jobLab %].cmd"
+errLog="[% anaDir %]/ERROR.log"
+
+source [% confFile %]
+
+echo "# INFO - Pipeline configuration" >&2
+echo "[% confFile %]" >&2
+
+echo "# INFO - Step(s) required" >&2
+echo "[% step %]" >&2
+IFS=',' read -r -a stepuser <<< "[% step %]"
+
+################################################
+# PEDIGREE/SAMPLE STRUCTURE, SHEET & PED       #
+################################################
+# (https://gatk.broadinstitute.org/hc/en-us/articles/360035531972-PED-Pedigree-format)
+echo "# INFO - Generating samples_info, samples_rawdata and PED file by pedigree and by sample ..." >&2
+while read pedigree; do
+	pedDir="[% anaDir %]/${pedigree}"
+	
+	#~ if [ ! -f ${pedDir}/${pedigree}_samples_info.tsv ]; then
+		echo -e "#pedigree\tsample\tsampleName\tsex\tsampleStatus\tsubproject\tapp\tmotherId\tfatherId\tbamcram\tgvcf\tvcf" > ${pedDir}/${pedigree}_samples_info.tsv
+		grep "^${pedigree}\s" [% analysisId %]_samples_info.tsv >> ${pedDir}/${pedigree}_samples_info.tsv
+		if [ $? != 0 ]; then echo "ERROR : Cannot generate samples_info for pedigree [${pedigree}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+		
+		echo -e "#pedigree\tsample\tapp\tsex\tbamcram\tgvcf\tvcf" > ${pedDir}/${pedigree}_samples_rawdata.tsv
+		grep "^${pedigree}\s" [% analysisId %]_samples_rawdata.tsv >> ${pedDir}/${pedigree}_samples_rawdata.tsv
+		if [ $? != 0 ]; then echo "ERROR : Cannot generate samples_rawdata for pedigree [${pedigree}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+		
+		grep -v "^#" ${pedDir}/${pedigree}_samples_info.tsv | awk '{print $1"\t"$2"\t"$9"\t"$8"\t"$4"\t"$5}' \
+		> ${pedDir}/${pedigree}_samples_info.ped
+		if [ $? != 0 ]; then echo "ERROR : Cannot generate PED file for pedigree [${pedigree}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	#~ fi
+	
+	while read ped sample app sex BCAM GVCF VCF; do
+		#~ if [ ! -f ${pedDir}/${sample}_samples_info.tsv ]; then
+			echo -e "#pedigree\tsample\tsampleName\tsex\tsampleStatus\tsubproject\tapp\tmotherId\tfatherId\tbamcram\tgvcf\tvcf" > ${pedDir}/${sample}_samples_info.tsv
+			grep "\s${sample}\s" [% analysisId %]_samples_info.tsv >> ${pedDir}/${sample}_samples_info.tsv
+			if [ $? != 0 ]; then echo "ERROR : Cannot generate samples_info for sample [${sample}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+			
+			echo -e "#pedigree\tsample\tapp\tsex\tbamcram\tgvcf\tvcf" > ${pedDir}/${sample}_samples_rawdata.tsv
+			grep "\s${sample}\s" [% analysisId %]_samples_rawdata.tsv >> ${pedDir}/${sample}_samples_rawdata.tsv
+			if [ $? != 0 ]; then echo "ERROR : Cannot generate samples_rawdata for sample [${sample}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+		#~ fi
+	done < <(grep -v "^#" ${pedDir}/${pedigree}_samples_rawdata.tsv)
+	
+done < <(grep -v "^#" [% analysisId %]_samples_info.tsv | cut -f 1 | sort -u)
+
+cat */*ped > [% analysisId %]_samples_info.ped
+
+################################################
+# SUBMIT PER PEDIGREE AND SAMPLE               #
+################################################
+echo "# INFO - Submitting analysis by pedigree ..." >&2
+unset allhapcallJobIDs
+while read pedigree; do
+	pedDir="[% anaDir %]/${pedigree}"
+	
+	################################################
+	# SUBMIT SAMPLE                                #
+	################################################
+	unset hapcallJobIDs
+	while read ped sample app sex BCAM GVCF VCF; do
+		
+		#-----------------#
+		# hapcallgenonorm #
+		#-----------------#
+		if [[ " ${stepuser[*]} " =~ " singshortvar " ]] || [[ " ${stepuser[*]} " =~ " multshortvar " ]] || [[ " ${stepuser[*]} " =~ " allshortvar " ]] || [[ " ${stepuser[*]} " =~ " roh " ]]; then
+			echo "# INFO - Submitting hapcall, genogvcf and bcfnorm by chromosome for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			unset hapcallgenonormJobIDs
+			stepDir="${pedDir}/hapcallgenonorm/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				for chr in ${chrList}; do
+					if [ -f ${pedDir}/rawdata/${sample}/${sample}.${chr}.g.vcf.gz ]; then
+						ln -s ${pedDir}/rawdata/${sample}/${sample}.${chr}.g.vcf.gz ${stepDir}/${sample}.${chr}.g.vcf.gz
+						ln -s ${pedDir}/rawdata/${sample}/${sample}.${chr}.g.vcf.gz.tbi ${stepDir}/${sample}.${chr}.g.vcf.gz.tbi
+					fi
+					if [ -f ${pedDir}/rawdata/${sample}/${sample}.${chr}.g.geno.vcf.gz ]; then
+						ln -s ${pedDir}/rawdata/${sample}/${sample}.${chr}.g.geno.vcf.gz ${stepDir}/${sample}.${chr}.g.geno.vcf.gz
+						ln -s ${pedDir}/rawdata/${sample}/${sample}.${chr}.g.geno.vcf.gz.tbi ${stepDir}/${sample}.${chr}.g.geno.vcf.gz.tbi
+					fi
+					jobLab="${sample}_${chr}.hapcallgenonorm"
+					jobCmd="${stepDir}/${jobLab}.cmd"
+					jobLog="${stepDir}/${jobLab}.jobID.log"
+					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+					--define qos=${hapcallgenonorm_qos} \
+					--define cpu=${hapcallgenonorm_cpu} \
+					--define mem=${hapcallgenonorm_mem} \
+					--define time="${hapcallgenonorm_time}" \
+					--define excludeNode=[% excludeNode %] \
+					--define jobLab=${jobLab} \
+					--define stepDir=${stepDir} \
+					--define confFile=[% confFile %] \
+					--define input=${BCAM} \
+					--define chr=${chr} \
+					--define levelId=${sample} \
+					${ttDir}/${hapcallgenonorm_tt} > ${jobCmd}
+					hapcallgenonormJobID=$(sbatch --parsable ${jobCmd})
+					hapcallgenonormJobIDs+=($(echo "${hapcallgenonormJobID}"))
+					hapcallJobIDs+=($(echo "${hapcallgenonormJobID}"))
+					allhapcallJobIDs+=($(echo "${hapcallgenonormJobID}"))
+					if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+					echo -e "${jobCmd}\t${hapcallgenonormJobID}" | tee -a ${jobLog} >&2
+					
+				done
+			else
+				echo "# INFO - hapcallgenonorm directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		hapcallgenonormJobID=$(IFS=: ; echo "${hapcallgenonormJobIDs[*]}")
+			
+		#-------------------#
+		# gathervcfpreannot #
+		#-------------------#
+		if [[ " ${stepuser[*]} " =~ " singshortvar " ]] || [[ " ${stepuser[*]} " =~ " roh " ]]; then
+			echo "# INFO - Submitting gathervcfpreannot for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/gathervcfpreannot/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir} >&2
+				jobLab="${sample}.gathervcfpreannot"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${gathervcf_qos} \
+				--define cpu=${gathervcf_cpu} \
+				--define mem=${gathervcf_mem} \
+				--define time="${gathervcf_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define stepDir=${stepDir} \
+				--define confFile=[% confFile %] \
+				--define pedDir=${pedDir} \
+				--define levelId=${sample} \
+				--define inputDir=${pedDir}/hapcallgenonorm/${sample} \
+				--define fileSuffix="g.geno.norm.vcf.gz" \
+				--define chrList="${chrList}" \
+				${ttDir}/${gathervcf_tt} > ${jobCmd}
+				if [ ! -z "${hapcallgenonormJobID}" ]; then
+					gathervcfpreannotJobID=$(sbatch --dependency=afterok:${hapcallgenonormJobID} --parsable ${jobCmd})
+				else
+					gathervcfpreannotJobID=$(sbatch --parsable ${jobCmd})
+				fi
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t$gathervcfpreannotJobID" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - gathervcfpreannot directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+			
+		#--------------#
+		# singshortvar #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " singshortvar " ]]; then
+			echo "# INFO - Submitting singshortvar for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/singshortvar/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.singshortvar"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${singshortvar_qos} \
+				--define cpu=${singshortvar_cpu} \
+				--define mem=${singshortvar_mem} \
+				--define time="${singshortvar_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define pedDir=${pedDir} \
+				--define stepDir=${stepDir} \
+				--define levelId=${sample} \
+				--define app="${app}" \
+				--define gathervcfpreannotJobID=${gathervcfpreannotJobID} \
+				${ttDir}/${singshortvar_tt} > ${jobCmd}
+				if [ ! -z "${hapcallgenonormJobID}" ]; then
+					singshortJobID=$(sbatch --dependency=afterok:${hapcallgenonormJobID} --parsable ${jobCmd})
+				else
+					singshortJobID=$(sbatch --parsable ${jobCmd})
+				fi
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${singshortJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - singshortvar directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+			
+		#--------------#
+		# mt           #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " mt " ]]; then
+			echo "# INFO - Submitting mt for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/mt/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.mt"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${mt_qos} \
+				--define cpu=${mt_cpu} \
+				--define mem=${mt_mem} \
+				--define time="${mt_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				${ttDir}/${mt_tt} > ${jobCmd}
+				mtJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${mtJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - mt directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+			
+		#------------------#
+		# roh              #
+		#------------------#
+		if [[ " ${stepuser[*]} " =~ " roh " ]]; then
+			echo "# INFO - Submitting roh for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/roh/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.roh"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${roh_qos} \
+				--define cpu=${roh_cpu} \
+				--define mem=${roh_mem} \
+				--define time="${roh_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${pedDir}/gathervcfpreannot/${sample}/${sample}.allchr.g.geno.norm.vcf.gz \
+				--define levelId=${sample} \
+				${ttDir}/${roh_tt} > ${jobCmd}
+				if [ ! -z "${gathervcfpreannotJobID}" ]; then
+					rohJobID=$(sbatch --dependency=afterok:${gathervcfpreannotJobID} --parsable ${jobCmd})
+				else
+					rohJobID=$(sbatch --parsable ${jobCmd})
+				fi
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${rohJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - roh directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+			
+		#--------------#
+		# singmanta    #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " singmanta " ]]; then
+			echo "# INFO - Submitting singmanta for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/singmanta/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.singmanta"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${singmanta_qos} \
+				--define cpu=${singmanta_cpu} \
+				--define mem=${singmanta_mem} \
+				--define time="${singmanta_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				--define app="${app}" \
+				${ttDir}/${singmanta_tt} > ${jobCmd}
+				singmantaJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${singmantaJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - singmanta directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# clinsv       #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " clinsv " ]]; then
+			echo "# INFO - Submitting clinsv for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/clinsv/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				if [ "${app}" = "WGS" ]; then
+					jobLab="${sample}.clinsv"
+					jobCmd="${stepDir}/${jobLab}.cmd"
+					jobLog="${stepDir}/${jobLab}.jobID.log"
+					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+					--define qos=${clinsv_qos} \
+					--define cpu=${clinsv_cpu} \
+					--define mem=${clinsv_mem} \
+					--define time="${clinsv_time}" \
+					--define excludeNode=[% excludeNode %] \
+					--define jobLab=${jobLab} \
+					--define confFile=[% confFile %] \
+					--define stepDir=${stepDir} \
+					--define input=${BCAM} \
+					--define levelId=${sample} \
+					${ttDir}/${clinsv_tt} > ${jobCmd}
+					clinsvJobID=$(sbatch --parsable ${jobCmd})
+					if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+					echo -e "${jobCmd}\t${clinsvJobID}" | tee -a ${jobLog} >&2
+				else
+					echo "# INFO - clinsv available only for WGS, application is [${app}], skipping clinsv for sample [${sample}]" | tee -a ${stepDir}/clinsv.log >&2
+				fi
+			else
+				echo "# INFO - clinsv directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# freec        #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " freec " ]]; then
+			echo "# INFO - Submitting freec for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/freec/${sample}"
+			if [ "${app}" = "WGS" ]; then
+				for windowSize in 5000 20000 50000; do
+					if [ ! -d ${stepDir}/${windowSize} ]; then
+						mkdir -p ${stepDir}/${windowSize}
+						jobLab="${sample}.freec.${windowSize}"
+						jobCmd="${stepDir}/${windowSize}/${jobLab}.cmd"
+						jobLog="${stepDir}/${windowSize}/${jobLab}.jobID.log"
+						apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+						--define qos=${freecrun_qos} \
+						--define cpu=${freecrun_cpu} \
+						--define mem=${freecrun_mem} \
+						--define time="${freecrun_time}" \
+						--define excludeNode=[% excludeNode %] \
+						--define jobLab=${jobLab} \
+						--define confFile=[% confFile %] \
+						--define stepDir=${stepDir}/${windowSize} \
+						--define input=${BCAM} \
+						--define levelId=${sample} \
+						--define sex=${sex} \
+						--define app="${app}" \
+						--define windowSize=${windowSize} \
+						${ttDir}/${freecrun_tt} > ${jobCmd}
+						freecrunJobID=$(sbatch --parsable ${jobCmd})
+						if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+						echo -e "${jobCmd}\t${freecrunJobID}" | tee -a ${jobLog} >&2
+					else
+						echo "# INFO - freec directory for pedigree [${pedigree}], sample [${sample}] and windowSize [${windowSize}] already exists, skipping this step" >&2
+					fi
+				done
+			else
+				windowSize=0
+				if [ ! -d ${stepDir}/${windowSize} ]; then
+					mkdir -p ${stepDir}/${windowSize}
+					jobLab="${sample}.freec.${windowSize}"
+					jobCmd="${stepDir}/${windowSize}/${jobLab}.cmd"
+					jobLog="${stepDir}/${windowSize}/${jobLab}.jobID.log"
+					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+					--define qos=${freecrun_qos} \
+					--define cpu=${freecrun_cpu} \
+					--define mem=${freecrun_mem} \
+					--define time="${freecrun_time}" \
+					--define excludeNode=[% excludeNode %] \
+					--define jobLab=${jobLab} \
+					--define confFile=[% confFile %] \
+					--define stepDir=${stepDir}/${windowSize} \
+					--define input=${BCAM} \
+					--define levelId=${sample} \
+					--define sex=${sex} \
+					--define app="${app}" \
+					--define windowSize=${windowSize} \
+					${ttDir}/${freecrun_tt} > ${jobCmd}
+					freecrunJobID=$(sbatch --parsable ${jobCmd})
+					if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+					echo -e "${jobCmd}\t${freecrunJobID}" | tee -a ${jobLog} >&2
+				else
+					echo "# INFO - freec directory for pedigree [${pedigree}], sample [${sample}] and windowSize [${windowSize}] already exists, skipping this step" >&2
+				fi
+			fi
+		fi
+			
+		#--------------#
+		# smafind      #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " smafind " ]]; then
+			echo "# INFO - Submitting smafind for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/smafind/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.smafind"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${smafind_qos} \
+				--define cpu=${smafind_cpu} \
+				--define mem=${smafind_mem} \
+				--define time="${smafind_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				${ttDir}/${smafind_tt} > ${jobCmd}
+				smafindJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${smafindJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - smafind directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# smncall      #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " smncall " ]]; then
+			echo "# INFO - Submitting smncall for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/smncall/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.smncall"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${smncall_qos} \
+				--define cpu=${smncall_cpu} \
+				--define mem=${smncall_mem} \
+				--define time="${smncall_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				${ttDir}/${smncall_tt} > ${jobCmd}
+				smncallJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${smncallJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - smncall directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# cyrius       #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " cyrius " ]]; then
+			echo "# INFO - Submitting cyrius for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/cyrius/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.cyrius"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${cyrius_qos} \
+				--define cpu=${cyrius_cpu} \
+				--define mem=${cyrius_mem} \
+				--define time="${cyrius_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				${ttDir}/${cyrius_tt} > ${jobCmd}
+				cyriusJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${cyriusJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - cyrius directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# gauchian     #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " gauchian " ]]; then
+			echo "# INFO - Submitting gauchian for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/gauchian/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.gauchian"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${gauchian_qos} \
+				--define cpu=${gauchian_cpu} \
+				--define mem=${gauchian_mem} \
+				--define time="${gauchian_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				${ttDir}/${gauchian_tt} > ${jobCmd}
+				gauchianJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${gauchianJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - gauchian directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# pypgx        #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " pypgx " ]]; then
+			echo "# INFO - Submitting pypgx for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/pypgx/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.pypgx"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${pypgx_qos} \
+				--define cpu=${pypgx_cpu} \
+				--define mem=${pypgx_mem} \
+				--define time="${pypgx_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				--define app="${app}" \
+				${ttDir}/${pypgx_tt} > ${jobCmd}
+				pypgxJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${pypgxJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - pypgx directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# stripy       #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " stripy " ]]; then
+			echo "# INFO - Submitting stripy for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/stripy/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.stripy"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${stripy_qos} \
+				--define cpu=${stripy_cpu} \
+				--define mem=${stripy_mem} \
+				--define time="${stripy_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				--define sex=${sex} \
+				${ttDir}/${stripy_tt} > ${jobCmd}
+				stripyJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${stripyJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - stripy directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# ehshort      #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " ehshort " ]]; then
+			echo "# INFO - Submitting ehshort for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/ehshort/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.ehshort"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${ehshort_qos} \
+				--define cpu=${ehshort_cpu} \
+				--define mem=${ehshort_mem} \
+				--define time="${ehshort_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				--define ehCatalog=${ehshortCatalog} \
+				--define ehSuffix="expansionhunter.shortcatalog" \
+				${ttDir}/${expansionhunter_tt} > ${jobCmd}
+				ehshortJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${ehshortJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - ehshort directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# ehlong       #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " ehlong " ]]; then
+			echo "# INFO - Submitting ehlong for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/ehlong/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.ehlong"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${ehlong_qos} \
+				--define cpu=${ehlong_cpu} \
+				--define mem=${ehlong_mem} \
+				--define time="${ehlong_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				--define ehCatalog=${ehlongCatalog} \
+				--define ehSuffix="expansionhunter.longcatalog" \
+				${ttDir}/${expansionhunter_tt} > ${jobCmd}
+				ehlongJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${ehlongJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - ehlong directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# hlahd        #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " hlahd " ]]; then
+			echo "# INFO - Submitting hlahd for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/hlahd/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				if [ "${app}" = "WGS" ]; then
+					jobLab="${sample}.hlahd"
+					jobCmd="${stepDir}/${jobLab}.cmd"
+					jobLog="${stepDir}/${jobLab}.jobID.log"
+					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+					--define qos=${hlahd_qos} \
+					--define cpu=${hlahd_cpu} \
+					--define mem=${hlahd_mem} \
+					--define time="${hlahd_time}" \
+					--define excludeNode=[% excludeNode %] \
+					--define jobLab=${jobLab} \
+					--define confFile=[% confFile %] \
+					--define stepDir=${stepDir} \
+					--define input=${BCAM} \
+					--define levelId=${sample} \
+					${ttDir}/${hlahd_tt} > ${jobCmd}
+					hlahdJobID=$(sbatch --parsable ${jobCmd})
+					if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+					echo -e "${jobCmd}\t${hlahdJobID}" | tee -a ${jobLog} >&2
+				else
+					echo "# INFO - HLA-HD available only for WGS, application is [${app}], skipping hlahd for sample [${sample}]" | tee -a ${stepDir}/hlahd.log >&2
+				fi
+			else
+				echo "# INFO - hlahd directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# hlakir       #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " hlakir " ]]; then
+			echo "# INFO - Submitting hlakir for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/hlakir/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				if [ "${app}" = "WGS" ]; then
+					jobLab="${sample}.hlakir"
+					jobCmd="${stepDir}/${jobLab}.cmd"
+					jobLog="${stepDir}/${jobLab}.jobID.log"
+					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+					--define qos=${hlakir_qos} \
+					--define cpu=${hlakir_cpu} \
+					--define mem=${hlakir_mem} \
+					--define time="${hlakir_time}" \
+					--define excludeNode=[% excludeNode %] \
+					--define jobLab=${jobLab} \
+					--define confFile=[% confFile %] \
+					--define stepDir=${stepDir} \
+					--define input=${BCAM} \
+					--define levelId=${sample} \
+					${ttDir}/${hlakir_tt} > ${jobCmd}
+					hlakirJobID=$(sbatch --parsable ${jobCmd})
+					if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+					echo -e "${jobCmd}\t${hlakirJobID}" | tee -a ${jobLog} >&2
+				else
+					echo "# INFO - hlakir available only for WGS, application is [${app}], skipping hlakir for sample [${sample}]" | tee -a ${stepDir}/hlakir.log >&2
+				fi
+			else
+				echo "# INFO - hlakir directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# mosdepth     #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " mosdepth " ]]; then
+			echo "# INFO - Submitting mosdepth for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/mosdepth/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.mosdepth"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${mosdepth_qos} \
+				--define cpu=${mosdepth_cpu} \
+				--define mem=${mosdepth_mem} \
+				--define time="${mosdepth_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				--define app="${app}" \
+				${ttDir}/${mosdepth_tt} > ${jobCmd}
+				mosdepthJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${mosdepthJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - mosdepth directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
+		# igvcram      #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " igvcram " ]]; then
+			echo "# INFO - Submitting igvcram for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/igvcram/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.igvcram"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${igvcram_qos} \
+				--define cpu=${igvcram_cpu} \
+				--define mem=${igvcram_mem} \
+				--define time="${igvcram_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				${ttDir}/${igvcram_tt} > ${jobCmd}
+				igvcramJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${igvcramJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - igvcram directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+			
+		#--------------#
+		# bamtocram    #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " bamtocram " ]]; then
+			echo "# INFO - Submitting bamtocram for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/bamtocram/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.bamtocram"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				BCAMname=$(basename "${BCAM}")
+				BCAMext="${BCAMname##*.}"
+				if [ "${BCAMext}" = "bam" ]; then
+					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+					--define qos=${bamtocram_qos} \
+					--define cpu=${bamtocram_cpu} \
+					--define mem=${bamtocram_mem} \
+					--define time="${bamtocram_time}" \
+					--define excludeNode=[% excludeNode %] \
+					--define jobLab=${jobLab} \
+					--define confFile=[% confFile %] \
+					--define stepDir=${stepDir} \
+					--define input=${BCAM%.bam} \
+					--define levelId=${sample} \
+					${ttDir}/${bamtocram_tt} > ${jobCmd}
+					bamtocramJobID=$(sbatch --parsable ${jobCmd})
+					if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+					echo -e "${jobCmd}\t${bamtocramJobID}" | tee -a ${jobLog} >&2
+				else
+					echo "# INFO - Alignments are already in CRAM format, skipping bamtocram for sample [${sample}]" | tee -a ${stepDir}/bamtocram.log >&2
+				fi
+			else
+				echo "# INFO - bamtocram directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#-----------------#
+		# gutierrezsarprs #
+		#-----------------#
+		if [[ " ${stepuser[*]} " =~ " gutierrezsarprs " ]]; then
+			echo "# INFO - Submitting gutierrezsarprs for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/gutierrezsarprs/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.gutierrezsarprs"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${gutierrezsarprs_qos} \
+				--define cpu=${gutierrezsarprs_cpu} \
+				--define mem=${gutierrezsarprs_mem} \
+				--define time="${gutierrezsarprs_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				${ttDir}/${gutierrezsarprs_tt} > ${jobCmd}
+				gutierrezsarprsJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${gutierrezsarprsJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - gutierrezsarprs directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#-----------------#
+		# tegerpgxgeno    #
+		#-----------------#
+		if [[ " ${stepuser[*]} " =~ " tegerpgxgeno " ]]; then
+			echo "# INFO - Submitting tegerpgxgeno for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/tegerpgxgeno/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.tegerpgxgeno"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--tag_style=php \
+				--define qos=${tegerpgxgeno_qos} \
+				--define cpu=${tegerpgxgeno_cpu} \
+				--define mem=${tegerpgxgeno_mem} \
+				--define time="${tegerpgxgeno_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				${ttDir}/${tegerpgxgeno_tt} > ${jobCmd}
+				tegerpgxgenoJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${tegerpgxgenoJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - tegerpgxgeno directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+
+	done < <(grep -v "^#" ${pedDir}/${pedigree}_samples_rawdata.tsv)
+	hapcallJobID=$(IFS=: ; echo "${hapcallJobIDs[*]}")
+	
+	################################################
+	# SUBMIT PER PEDIGREE                          #
+	################################################
+	nSampPed=$(grep -v "^#" ${pedDir}/${pedigree}_samples_info.tsv | wc -l)
+	app=$(grep -v "^#" [% analysisId %]_samples_rawdata.tsv | cut -f 3 | sort -u)
+	
+	#--------------#
+	# multshortvar #
+	#--------------#
+	if [[ " ${stepuser[*]} " =~ " multshortvar " ]]; then
+		echo "# INFO - Submitting multshortvar for pedigree [${pedigree}] ..." >&2
+		stepDir="${pedDir}/multshortvar"
+		if [ ! -d ${stepDir} ]; then
+			mkdir -p ${stepDir}
+			if [ "$nSampPed" -gt "1" ]; then
+				jobLab="${pedigree}.multshortvar"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${multshortvar_qos} \
+				--define cpu=${multshortvar_cpu} \
+				--define mem=${multshortvar_mem} \
+				--define time="${multshortvar_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define pedDir=${pedDir} \
+				--define stepDir=${stepDir} \
+				--define levelId=${pedigree} \
+				--define app="${app}" \
+				${ttDir}/${multshortvar_tt} > ${jobCmd}
+				if [ ! -z  "${hapcallJobID}" ]; then
+					multshortJobID=$(sbatch --dependency=afterok:${hapcallJobID} --parsable ${jobCmd})
+				else
+					multshortJobID=$(sbatch --parsable ${jobCmd})
+				fi
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${multshortJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - Only one sample for this pedigree [${pedigree}], skipping multshortvar" | tee -a ${stepDir}/multshortvar.log >&2
+			fi
+		else
+			echo "# INFO - multshortvar directory for pedigree [${pedigree}] already exists, skipping this step" >&2
+		fi
+	fi
+	
+	#--------------#
+	# multmanta    #
+	#--------------#
+	if [[ " ${stepuser[*]} " =~ " multmanta " ]]; then
+		echo "# INFO - Submitting multmanta for pedigree [${pedigree}] ..." >&2
+		stepDir="${pedDir}/multmanta"
+		if [ ! -d ${stepDir} ]; then
+			mkdir -p ${stepDir}
+			if [ "$nSampPed" -gt "1" ]; then
+				jobLab="${pedigree}.multmanta"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${multmanta_qos} \
+				--define cpu=${multmanta_cpu} \
+				--define mem=${multmanta_mem} \
+				--define time="${multmanta_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define pedDir=${pedDir} \
+				--define stepDir=${stepDir} \
+				--define levelId=${pedigree} \
+				--define app="${app}" \
+				${ttDir}/${multmanta_tt} > ${jobCmd}
+				if [ "$nSampPed" -le "5" ]; then
+					multmantaJobID=$(sbatch --parsable ${jobCmd})
+					if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+					echo -e "${jobCmd}\t${multmantaJobID}" | tee -a ${jobLog} >&2
+				else
+					echo "# INFO - Too many samples (max.5, given ${nSampPed}), execution will take too much time, [${jobCmd}] not submited" | tee -a ${stepDir}/multmanta.log >&2
+				fi
+			else
+				echo "# INFO - Only one sample for this pedigree [${pedigree}], skipping multmanta" | tee -a ${stepDir}/multmanta.log >&2
+			fi
+		else
+			echo "# INFO - multmanta directory for pedigree [${pedigree}] already exists, skipping this step" >&2
+		fi
+	fi
+	
+	#--------------#
+	# somalier     #
+	#--------------#
+	if [[ " ${stepuser[*]} " =~ " somalier " ]]; then
+		echo "# INFO - Submitting somalier for pedigree [${pedigree}] ..." >&2
+		stepDir="${pedDir}/somalier"
+		if [ ! -d ${stepDir} ]; then
+			mkdir -p ${stepDir}
+			if [ "$nSampPed" -gt "1" ]; then
+				jobLab="${pedigree}.somalier"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${somalier_qos} \
+				--define cpu=${somalier_cpu} \
+				--define mem=${somalier_mem} \
+				--define time="${somalier_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define sheetDir=${pedDir} \
+				--define levelId=${pedigree} \
+				--define pedfile=${pedDir}/${pedigree}_samples_info.ped \
+				${ttDir}/${somalier_tt} > ${jobCmd}
+				somalierpedJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${somalierpedJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - Only one sample for this pedigree [${pedigree}], skipping somalier" | tee -a ${stepDir}/somalier.log >&2
+			fi
+		else
+			echo "# INFO - somalier directory for pedigree [${pedigree}] already exists, skipping this step" >&2
+		fi
+	fi
+	
+done < <(grep -v "^#" [% analysisId %]_samples_info.tsv | cut -f 1 | sort -u)
+allhapcallJobID=$(IFS=: ; echo "${allhapcallJobIDs[*]}")
+
+################################################
+# SUBMIT FOR WHOLE ANALYSIS                    #
+################################################
+nSampAna=$(grep -v "^#" [% anaDir %]/[% analysisId %]_samples_info.tsv | wc -l)
+
+#--------------#
+# allshortvar  #
+#--------------#
+if [[ " ${stepuser[*]} " =~ " allshortvar " ]]; then
+	echo "# INFO - Submitting allshortvar ..." >&2
+	stepDir="[% anaDir %]/allshortvar"
+	if [ ! -d ${stepDir} ]; then
+		mkdir -p ${stepDir}
+		if [ "$nSampAna" -gt "1" ]; then
+			jobLab="[% analysisId %].allshortvar"
+			jobCmd="${stepDir}/${jobLab}.cmd"
+			jobLog="${stepDir}/${jobLab}.jobID.log"
+			apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+			--define qos=${allshortvar_qos} \
+			--define cpu=${allshortvar_cpu} \
+			--define mem=${allshortvar_mem} \
+			--define time="${allshortvar_time}" \
+			--define excludeNode=[% excludeNode %] \
+			--define jobLab=${jobLab} \
+			--define confFile=[% confFile %] \
+			--define anaDir=[% anaDir %] \
+			--define stepDir=${stepDir} \
+			--define levelId=[% analysisId %] \
+			${ttDir}/${allshortvar_tt} > ${jobCmd}
+			if [ ! -z  "${allhapcallJobID}" ]; then
+				allshortvarJobID=$(sbatch --dependency=afterok:${allhapcallJobID} --parsable ${jobCmd})
+			else
+				allshortvarJobID=$(sbatch --parsable ${jobCmd})
+			fi
+			if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+			echo -e "${jobCmd}\t${allshortvarJobID}" | tee -a ${jobLog} >&2
+		else
+			echo "# INFO - Only one sample for this analysis [[% analysisId %]], skipping allshortvar" | tee -a ${stepDir}/allshortvar.log >&2
+		fi
+	else
+		echo "# INFO - allshortvar directory for analysis [[% analysisId %]] already exists, skipping this step" >&2
+	fi
+fi
+
+#--------------#
+# somalier     #
+#--------------#
+if [[ " ${stepuser[*]} " =~ " somalier " ]]; then
+	echo "# INFO - Submitting somalier ..." >&2
+	stepDir="[% anaDir %]/somalier"
+	if [ ! -d ${stepDir} ]; then
+		mkdir -p ${stepDir}
+		if [ "$nSampAna" -gt "1" ]; then
+			jobLab="[% analysisId %].somalier"
+			jobCmd="${stepDir}/${jobLab}.cmd"
+			jobLog="${stepDir}/${jobLab}.jobID.log"
+			apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+			--define qos=${somalier_qos} \
+			--define cpu=${somalier_cpu} \
+			--define mem=${somalier_mem} \
+			--define time="${somalier_time}" \
+			--define excludeNode=[% excludeNode %] \
+			--define jobLab=${jobLab} \
+			--define confFile=[% confFile %] \
+			--define stepDir=${stepDir} \
+			--define sheetDir=[% anaDir %] \
+			--define levelId=[% analysisId %] \
+			--define pedfile=[% anaDir %]/[% analysisId %]_samples_info.ped \
+			${ttDir}/${somalier_tt} > ${jobCmd}
+			somalieranaJobID=$(sbatch --parsable ${jobCmd})
+			if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+			echo -e "${jobCmd}\t${somalieranaJobID}" | tee -a ${jobLog} >&2
+		else
+			echo "# INFO - Only one sample for this analysis [[% analysisId %]], skipping somalier" | tee -a ${stepDir}/somalier.log >&2
+		fi
+	else
+		echo "# INFO - somalier directory for analysis [[% analysisId %]] already exists, skipping this step" >&2
+	fi
+fi
+
+#--------------#
+# exdepth      #
+#--------------#
+if [[ " ${stepuser[*]} " =~ " exdepth " ]]; then
+	echo "# INFO - Submitting exdepth by app ..." >&2
+	while read app; do
+		stepDir="[% anaDir %]/cnv/${app}/exdepth"
+		if [ ! -d ${stepDir} ]; then
+			mkdir -p ${stepDir}
+			if [ "${app}" != "WGS" ]; then
+				jobLab="${app}.exdepth"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${exdepth_qos} \
+				--define cpu=${exdepth_cpu} \
+				--define mem=${exdepth_mem} \
+				--define time="${exdepth_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define sheetDir=[% anaDir %] \
+				--define levelId=[% analysisId %] \
+				--define app="${app}" \
+				${ttDir}/${exdepth_tt} > ${jobCmd}
+				exdepthJobID=$(sbatch --parsable ${jobCmd})
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${exdepthJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - Experiment is [${app}], skipping exdepth" | tee -a ${stepDir}/exdepth.log >&2
+			fi
+		else
+			echo "# INFO - exdepth directory for analysis [[% analysisId %]] and app [${app}] already exists, skipping this step" >&2
+		fi
+	done < <(grep -v "^#" [% analysisId %]_samples_rawdata.tsv | cut -f 3 | sort -u)
+fi
+
+echo "# INFO - Done!" >&2
+
+printf END >&2; uptime >&2
+date >&2

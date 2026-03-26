@@ -1,0 +1,142 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# combgvcf genogvcf bcfnorm
+echo "# INFO - Submitting combgvcf, genogvcf and bcfnorm by chromosome ..." >&2
+unset bcfnormJobIDs
+for chr in ${chrList}; do
+	
+	#---------------#
+	# combgvcf      #
+	#---------------#
+	stepDir="[% stepDir %]/combgvcf"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %]_${chr}.combgvcf"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${combgvcf_qos} \
+	--define cpu=${combgvcf_cpu} \
+	--define mem=${combgvcf_mem} \
+	--define time="${combgvcf_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define levelDir=[% anaDir %] \
+	--define levelId=[% levelId %] \
+	--define inputDir="[% anaDir %]/*/hapcallgenonorm" \
+	--define chr=${chr} \
+	${ttDir}/${combgvcf_tt} > ${jobCmd}
+	combgvcfJobID=$(sbatch --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t$combgvcfJobID" | tee -a ${jobLog} >&2
+	
+	#---------------#
+	# genogvcf      #
+	#---------------#
+	stepDir="[% stepDir %]/genogvcf"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %]_${chr}.genogvcf"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${genogvcf_qos} \
+	--define cpu=${genogvcf_cpu} \
+	--define mem=${genogvcf_mem} \
+	--define time="${genogvcf_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define levelId=[% levelId %] \
+	--define input=[% anaDir %]/allshortvar/combgvcf/[% levelId %].${chr}.g.vcf.gz \
+	--define chr=${chr} \
+	${ttDir}/${genogvcf_tt} > ${jobCmd}
+	genogvcfJobID=$(sbatch --dependency=afterok:${combgvcfJobID} --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t$genogvcfJobID" | tee -a ${jobLog} >&2
+	
+	#---------------#
+	# bcfnorm       #
+	#---------------#
+	stepDir="[% stepDir %]/bcfnorm"
+	mkdir -p ${stepDir} >&2
+	jobLab="[% levelId %]_${chr}.bcfnorm"
+	jobCmd="${stepDir}/${jobLab}.cmd"
+	jobLog="${stepDir}/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${bcfnorm_qos} \
+	--define cpu=${bcfnorm_cpu} \
+	--define mem=${bcfnorm_mem} \
+	--define time="${bcfnorm_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define stepDir=${stepDir} \
+	--define confFile=[% confFile %] \
+	--define levelId=[% levelId %] \
+	--define input=[% anaDir %]/allshortvar/genogvcf/[% levelId %].${chr}.g.geno.vcf.gz \
+	--define chr=${chr} \
+	${ttDir}/${bcfnorm_tt} > ${jobCmd}
+	bcfnormJobIDs+=($(sbatch --dependency=afterok:${genogvcfJobID} --parsable ${jobCmd}))
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${bcfnormJobIDs[${#bcfnormJobIDs[@]}-1]}" | tee -a ${jobLog} >&2
+	
+done
+bcfnormJobID=$(IFS=: ; echo "${bcfnormJobIDs[*]}")
+
+echo "========================================="
+echo ">>> ${bcfnormJobID} <<<"
+echo "========================================="
+
+#---------------#
+# gathervcf     #
+#---------------#
+echo "# INFO - Submitting gathervcf ..." >&2
+stepDir="[% stepDir %]/gathervcf"
+mkdir -p ${stepDir} >&2
+jobLab="[% levelId %].gathervcf"
+jobCmd="${stepDir}/${jobLab}.cmd"
+jobLog="${stepDir}/${jobLab}.jobID.log"
+apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${gathervcf_qos} \
+--define cpu=${gathervcf_cpu} \
+--define mem=${gathervcf_mem} \
+--define time="${gathervcf_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define stepDir=${stepDir} \
+--define confFile=[% confFile %] \
+--define levelId=[% levelId %] \
+--define inputDir=[% anaDir %]/allshortvar/bcfnorm \
+--define fileSuffix="g.geno.norm.vcf.gz" \
+--define chrList="${chrList}" \
+${ttDir}/${gathervcf_tt} > ${jobCmd}
+gathervcfJobID=$(sbatch --dependency=afterok:${bcfnormJobID} --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t$gathervcfJobID" | tee -a ${jobLog} >&2
+
+printf END >&2; uptime >&2
+date >&2

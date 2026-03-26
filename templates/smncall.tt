@@ -1,0 +1,41 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+echo "# INFO - Preparing manifest ..." >&2
+echo [% input %] > [% levelId %].smncall.manifest.txt
+if [ $? != 0 ]; then echo "ERROR : smncall [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi 
+
+echo "# INFO - Running smn_caller ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${smncallCont} \
+python3 /opt/SMNCopyNumberCaller-1.1.2/smn_caller.py \
+--manifest [% levelId %].smncall.manifest.txt \
+--genome ${smncallDb} \
+--outDir [% stepDir %] \
+--prefix [% levelId %].smncall \
+--threads [% cpu %]
+if [ $? != 0 ]; then echo "ERROR : smncall [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi 
+
+printf END >&2; uptime >&2
+date >&2

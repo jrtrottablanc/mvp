@@ -1,0 +1,78 @@
+{
+    "Pipeline"                : {
+        "MVP"                 :    "20260109"
+    },
+    "Databases"               : {
+        "ANNOTSV"             :    "RefSeq",
+        "CADD"                :    "1.7",
+        "CIVIC"               :    "MonthlyUpdate",
+        "ClinVar"             :    "MonthlyUpdate",
+        "COSMIC"              :    "101",
+        "dbNSFP"              :    "4.5",
+        "gnomAD"              :    "4.1.0",
+        "SnpEff"              :    "GRCh38.mane.1.2.refseq",
+        "REVEL"	              :    "1.3",
+        "GreenDB"             :    "2.5",
+        "SpliceAI"            :    "1.3_filter0.1"
+    },
+    "Programs"                : {
+        "Aligner"             : {
+            "BWA-mem"         :    "0.7.19"
+        },
+        "CNV"                 : {
+            "AnnotSV"         :    "3.4.4",
+            "ClinSV"          :    "1.0",
+            "Control-FREEC"   :    "11.5",
+            "ExomeDepth"      :    "1.1.17",
+            "Manta"           :    "1.6.0"
+        },
+        "ShortVariants"       : {
+            "BCFTOOLS"        :    "1.21",
+            "GATK"            :    "4.1.9.0",
+            "BEDTools"        :    "2.30.0",
+            "SnpEff"          :    "5.2",
+            "SpliceAI"        :    "1.3.1",
+            "GREEN-VARAN"     :    "1.3.2",
+            "vcfanno"         :    "0.3.5"
+        },
+        "MT"                  : {
+            "MT_GATK"         :    "4.1.7.0"
+        },
+        "SMA"                 : {
+            "SMA_finder"      :    "1.4.4",
+            "SMNCopyNumberCaller"   :   "1.1.2"
+        },
+        "CYP2D6"              : {
+            "Cyrius"          :    "1.1.1"
+        },
+        "GBA"                 : {
+            "gauchian"        :    "1.0.2"
+        },
+        "PGx"                 : {
+            "PyPGx"           :    "0.25.0"
+        },
+        "STR"                 : {
+            "ExpansionHunter" :    "5.0.0",
+            "Stripy"          :    "2.5"
+        },
+        "MHC"                 : {
+            "HLA-HD"          :    "1.7.0"
+        },
+        "HLA-KIR"             : {
+            "T1K"             :    "1.0.8"
+        },
+        "Somalier"            : {
+            "SOMALIER"        :    "0.3.1"
+        },
+        "Coverage"            : {
+            "mosdepth"        :    "0.3.3"
+        },
+        "BamManipulation"     : {
+            "SAMtools"        :    "1.15.1",
+            "biobambam"       :    "2.0.179",
+            "cramtoolsCNAG"   :    "1.0.4"
+        }
+    },
+    "ReferenceGenome"         :    "/scratch_isilon/groups/dat/data/Organisms/Homo_sapiens/GRCh38.hl/fasta/hsapiens.GRCh38.hl.fasta",
+    "Application"             :    "APPLICATION"
+}

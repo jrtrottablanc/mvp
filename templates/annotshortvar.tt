@@ -1,0 +1,287 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# copy input rename with final file name
+echo "# INFO - Copying input file and renaming with final file name ..." >&2
+cp -v [% input %] [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz >&2
+cp -v [% input %].tbi [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi >&2
+
+#------------------#
+# VAF              #
+#------------------#
+echo "# INFO - Annotating with VAF ..." >&2
+
+# rename final file as tmp
+echo "# INFO - Renaming final file as temporary file ..." >&2
+mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+
+# VAF
+echo "# INFO - Adding VAF ..." >&2
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools \
++fill-tags -Oz -o [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz \
+[% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz \
+-- -t 'FORMAT/VAF'
+if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#1.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF indexes
+echo "# INFO - Creating VCF indexes ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -f -p vcf [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#1.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF integrity
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz >&2
+if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#1.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# save VAF
+echo "# INFO - Saving VAF file ..." >&2
+cp -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.VAF.vcf.gz >&2
+cp -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.VAF.vcf.gz.tbi >&2
+
+# clean tmp
+echo "# INFO - Removing temporary file ..." >&2
+rm -v [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+rm -v [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+
+#------------------#
+# varType          #
+#------------------#
+echo "# INFO - Annotating with varType ..." >&2
+
+# rename final file as tmp
+echo "# INFO - Renaming final file as temporary file ..." >&2
+mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+
+# varType
+echo "# INFO - Adding varType ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${snpeffCont} SnpSift varType \
+[% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz | \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#2.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF indexes
+echo "# INFO - Creating VCF indexes ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -f -p vcf [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#2.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF integrity
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz >&2
+if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#2.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# save varType
+echo "# INFO - Saving varType file ..." >&2
+cp -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.varType.vcf.gz >&2
+cp -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.varType.vcf.gz.tbi >&2
+
+# clean tmp
+echo "# INFO - Removing temporary file ..." >&2
+rm -v [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+rm -v [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+
+#------------------#
+# snpEff           #
+#------------------#
+if [ "${snpeffDb}" != "NA" ]; then
+	echo "# INFO - Annotating with SnpEff ..." >&2
+	
+	# rename input as tmp
+	echo "# INFO - Renaming input files as temporary file ..." >&2
+	mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+	mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+	
+	# snpEff
+	echo "# INFO - Running snpEff ..." >&2
+	module load Java/17.0.2 >&2
+	java -jar /scratch_isilon/groups/dat/apps/SNPEFF/5.2/snpEff.jar \
+	ann -c ${snpeffConf} -canon -noStats -noLog -o vcf ${snpeffDb} \
+	[% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz \
+	| apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#3.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	module purge >&2
+	
+	# VCF indexes
+	echo "# INFO - Creating VCF indexes ..." >&2
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -f -p vcf [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#3.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	# VCF integrity
+	echo "# INFO - Checking VCF integrity ..." >&2
+	/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz >&2
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#3.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	# save SnpEff
+	echo "# INFO - Saving SnpEff file ..." >&2
+	cp -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.SnpEff.vcf.gz >&2
+	cp -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.SnpEff.vcf.gz.tbi >&2
+	
+	# clean tmp
+	echo "# INFO - Removing temporary file ..." >&2
+	rm -v [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+	rm -v [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+	
+else
+	echo "# INFO - SnpEff database not available into configuration file [[% confFile %]], skipping SnpEff" >&2
+fi
+
+#------------------#
+# vcfanno          #
+#------------------#
+if [ "${annotToml}" != "NA" ]; then
+	echo "# INFO - Annotating with vcfanno ..." >&2
+	
+	# rename input as tmp
+	echo "# INFO - Renaming input files as temporary file ..." >&2
+	mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+	mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+	
+	# vcfanno
+	echo "# INFO - Running vcfanno ..." >&2
+	${pipeDir}/vcfanno_linux64 \
+	-p [% cpu %] \
+	${annotToml} \
+	[% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz \
+	| apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#4.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	# VCF indexes
+	echo "# INFO - Creating VCF indexes ..." >&2
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -f -p vcf [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#4.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	# VCF integrity
+	echo "# INFO - Checking VCF integrity ..." >&2
+	/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz >&2
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#4.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	# rename input as tmp
+	echo "# INFO - Renaming input files as temporary file ..." >&2
+	mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+	mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+	
+	# calculate AF, AF_grpmax, AF_XX and AF_XY for gnomad"
+	echo "# INFO - Calculating AF, AF_grpmax, AF_XX and AF_XY for gnomad ..." >&2
+	apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools \
+	+fill-tags [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz -- -t 'INFO/AF_gnomAD:1=float((INFO/AC_gnomAD)/(INFO/AN_gnomAD))' | \
+	apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools \
+	+fill-tags -- -t 'INFO/AF_grpmax:1=float((INFO/AC_grpmax)/(INFO/AN_grpmax))' | \
+	apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools \
+	+fill-tags -- -t 'INFO/AF_XX:1=float((INFO/AC_XX)/(INFO/AN_XX))' | \
+	apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools \
+	+fill-tags -Oz -o [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz -- -t 'INFO/AF_XY:1=float((INFO/AC_XY)/(INFO/AN_XY))'
+	
+	# VCF indexes
+	echo "# INFO - Creating VCF indexes ..." >&2
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -f -p vcf [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#4.4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	# VCF integrity
+	echo "# INFO - Checking VCF integrity ..." >&2
+	/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz >&2
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#4.5] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	# save vcfanno
+	echo "# INFO - Saving vcfanno file ..." >&2
+	cp -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.vcfanno.vcf.gz >&2
+	cp -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.vcfanno.vcf.gz.tbi >&2
+	
+	# clean tmp
+	echo "# INFO - Removing temporary file ..." >&2
+	rm -v [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+	rm -v [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+	
+else
+	echo "# INFO - vcfanno toml not available into configuration file [[% confFile %]], skipping vcfanno" >&2
+fi
+
+#------------------#
+# greenDB          #
+#------------------#
+if [ "${greenvRef}" != "NA" ]; then
+	echo "# INFO - Annotating with GreenDB ..." >&2
+	
+	#~ if [ "${greenvChr}" != "NA" ]; then
+		#~ greenvChrParam="${greenvChr}"
+	#~ else
+		#~ echo "ERROR : Undefined greenvChr parameter [${greenvChr}] from [[% confFile %]] [step#4.0] [${cmdFile}]" >> ${errLog}; exit 1;
+	#~ fi
+
+	# rename input as tmp
+	echo "# INFO - Renaming input files as temporary file ..." >&2
+	mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+	mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+
+	# Green-Varan
+	echo "# INFO - Running Green-Varan ..." >&2
+	mkdir -v [% levelId %].[% chr %].greenVaran >&2
+	module use /software/dat/modules/all >&2
+	module load Nextflow/23.10 >&2
+	module load BCFtools/1.17-GCC-12.2.0 >&2
+	nextflow /scratch_isilon/groups/dat/apps/GREEN-VARAN/1.3.2/workflow/main.nf \
+	-profile singularity \
+	--input [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz \
+	--build ${greenvRef} ${greenvChrParam} \
+	--out [% levelId %].[% chr %].greenVaran \
+	--scores best \
+	--regions best \
+	--AF \
+	--greenvaran_config /scratch_isilon/groups/dat/apps/GREEN-VARAN/1.3.2/config/prioritize_smallvars.json \
+	--greenvaran_dbschema /scratch_isilon/groups/dat/apps/GREEN-VARAN/1.3.2/config/greendb_schema_v2.5.json
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#5.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	module purge >&2
+
+	# copy results
+	echo "# INFO - Copying results ..." >&2
+	cp -v [% levelId %].[% chr %].greenVaran/[% levelId %].[% chr %].g.geno.norm.ann.TEMP.annotated.vcf.gz \
+	[% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
+	
+	# VCF indexes
+	echo "# INFO - Creating VCF indexes ..." >&2
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#5.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	# VCF integrity
+	echo "# INFO - Checking VCF integrity ..." >&2
+	/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz >&2
+	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#5.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	
+	# save greendb
+	echo "# INFO - Saving greendb file ..." >&2
+	cp -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz [% levelId %].[% chr %].g.geno.norm.greendb.vcf.gz >&2
+	cp -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %].g.geno.norm.greendb.vcf.gz.tbi >&2
+	
+	# clean tmp
+	echo "# INFO - Removing temporary file ..." >&2
+	rm -v [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz >&2
+	rm -v [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz.tbi >&2
+
+else
+	echo "# INFO - GreenDB reference not available into configuration file [[% confFile %]], skipping GreenDB" >&2
+fi
+
+printf END >&2; uptime >&2
+date >&2

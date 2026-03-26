@@ -1,0 +1,71 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# somalier extract
+echo "# INFO - Submitting somext by sample ..." >&2	  
+while read pedigree sample app sex BCAM GVCF VCF; do
+	jobLab="${sample}.somext"
+	jobCmd="[% stepDir %]/${jobLab}.cmd"
+	jobLog="[% stepDir %]/${jobLab}.jobID.log"
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${somext_qos} \
+	--define cpu=${somext_cpu} \
+	--define mem=${somext_mem} \
+	--define time="${somext_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define confFile=[% confFile %] \
+	--define stepDir=[% stepDir %] \
+	--define input=${BCAM} \
+	--define sample=${sample} \
+	${ttDir}/${somext_tt} > ${jobCmd}
+	soeJobIDs+=($(sbatch --parsable ${jobCmd}))
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${soeJobIDs[${#soeJobIDs[@]}-1]}" | tee -a ${jobLog} >&2
+done < <(grep -v "^#" [% sheetDir %]/[% levelId %]_samples_rawdata.tsv)
+
+# somalier relate
+echo "# INFO - Submitting somrel ..." >&2
+jobLab="[% levelId %].somrel"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${somrel_qos} \
+--define cpu=${somrel_cpu} \
+--define mem=${somrel_mem} \
+--define time="${somrel_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define levelId=[% levelId %] \
+--define pedfile=[% pedfile %] \
+${ttDir}/${somrel_tt} > ${jobCmd}
+soeJobID=$(IFS=: ; echo "${soeJobIDs[*]}")
+sorJobID=$(sbatch --dependency=afterok:${soeJobID} --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t$sorJobID" | tee -a ${jobLog} >&2
+
+
+printf END >&2; uptime >&2
+date >&2

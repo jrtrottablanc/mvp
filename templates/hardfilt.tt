@@ -1,0 +1,83 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${funcDir}/candidateGenes.sh
+
+# filters list
+IFS=',' read -r -a filterList <<< "[% filters %]"
+
+# copy input files and rename
+#~ echo "# INFO - Copying input files and renaming with final file name ..." >&2
+#~ cp -v [% input %] [% levelId %].allchr.g.geno.norm.ann.tag.filt.vcf.gz >&2
+#~ cp -v [% input %].tbi [% levelId %].allchr.g.geno.norm.ann.tag.filt.vcf.gz.tbi >&2
+
+if [[ " ${filterList[*]} " =~ " candigene " ]]; then
+	
+	# candidate genes
+	check_input_genes "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+	grepGenes=$(cut -f 2 ${geneDir}/${candidateGenes} | paste -d";" -s - | sed 's/;/\\|/g')
+	echo "# INFO - Grep string for filtering [\"${grepGenes}\"]" >&2
+		
+	if [ "[% inputType %]" = "vcf" ]; then
+		# VCF header
+		zgrep "^#" [% input %] > [% levelId %].allchr.g.geno.norm.ann.tag.candigene.vcf
+		# filter genes
+		echo "# INFO - Hard filtering by candidate genes ..." >&2
+		zgrep -v "^#"  [% input %] | grep "$grepGenes" >> [% levelId %].allchr.g.geno.norm.ann.tag.candigene.vcf
+		if [ $? != 0 ]; then echo "ERROR : hardfilt [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+		# bgzip
+		echo "# INFO - Compressing VCF ..." >&2
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip [% levelId %].allchr.g.geno.norm.ann.tag.candigene.vcf
+		if [ $? != 0 ]; then echo "ERROR : hardfilt [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+		# VCF index
+		echo "# INFO - Creating VCF indexes ..." >&2
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf [% levelId %].allchr.g.geno.norm.ann.tag.candigene.vcf.gz
+		if [ $? != 0 ]; then echo "ERROR : hardfilt [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+		# VCF integrity
+		echo "# INFO - Checking VCF integrity ..." >&2
+		/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].allchr.g.geno.norm.ann.tag.candigene.vcf.gz >&2
+		if [ $? != 0 ]; then echo "ERROR : hardfilt [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	fi
+	
+	#~ if [ "[% inputType %]" = "tsv" ]; then
+		# VCF header [% levelId %].manta.annot.tag.tsv
+		#~ zgrep "^#" [% input %] > [% levelId %].allchr.g.geno.norm.ann.tag.filt.vcf
+		# filter genes
+		#~ echo "# INFO - Hard filtering by candidate genes ..." >&2
+		#~ zgrep -v "^#"  [% input %] | grep "$grepGenes" >> [% levelId %].allchr.g.geno.norm.ann.tag.filt.vcf
+		#~ if [ $? != 0 ]; then echo "ERROR : hardfilt [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	#~ fi
+	
+fi
+
+# clean tmp
+#~ echo "# INFO - Cleaning temporary files ..." >&2
+#~ rm [% levelId %].allchr.g.geno.norm.ann.tag.TMP*
+#~ if [ $? != 0 ]; then echo "ERROR : hardfilt [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

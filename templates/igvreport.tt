@@ -1,0 +1,60 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+#~ echo -e "####################\n# Make screenshots REVEL 0.8 \n####################" >&2
+#~ INFOCOL=$(cat [% geneDir %]/[% candidateGenes %] | cut -f 2 | tr '\n' ' ')
+#~ apptainer exec --no-home --bind [% bindDir %] [% ttDir %]/[% igvReportCont %] create_report \
+#~ --ideogram [% scIdeogram %] \
+#~ --tracks [% analysisFolder %]/[% pedId %]/*/RawData/*.bam \
+#~ [% scRefseqGene %] \
+#~ --info-columns REVEL_Ensembl_transcriptid REVEL_aa_change REVEL_score InterVar_ClinicalSignificance InterVar_ACMG_Criteria $INFOCOL CLNSIG gnomAD_WG_AF_POPMAX ${INFO4ScreenShots[@]} \
+#~ --output [% analysisFolder %]/[% pedId %]/[% sample %]/ShortVariants/[% sample %]_[% pedId %]_ShortVariants_Screenshots_filterREVEL_0.8.html \
+#~ [% analysisFolder %]/[% pedId %]/[% sample %]/ShortVariants/[% sample %].allchr.norm.annot.snpEff.gnomAD.CADD.Clinvar.REVEL.InterVar.CandidateGenes.SpliceAI.tagSpliceAI_0.5.filterREVEL_0.8.vcf.gz \
+#~ [% fasta %]
+#~ if [ $? != 0 ]; then echo "ERROR : ExtraAnnotate ShortVariants [step#20.4] : [% analysisFolder %]/[% pedId %]/[% sample %]/ShortVariants" >> [% analysisFolder %]/[% pedId %]/[% sample %]/ERROR.log; exit 1; fi
+
+
+
+
+
+#~ apptainer \
+#~ exec \
+#~ --no-home \
+#~ --bind /shared,/scratch_isilon \
+#~ /scratch_isilon/groups/dat/apps/IGV-REPORTS/1.14.1/igvreports_1.14.1.sif \
+#~ create_report \
+#~ --flanking 1000 \
+#~ --tracks /scratch/devel/jcamps/new_structure/samples/GENQA/GENQA_25/BA9724/BA9724.bqsr.bam \
+#~ --output BA9724_deletion.html \
+#~ /scratch_isilon/groups/dat/rtonda/GENQA/GENQA_19/AZ8560_deletion.bedpe \
+#~ /shared/pbt/Organisms/Homo_sapiens/GRCh38.hl/fasta/hsapiens.GRCh38.hl.fasta 
+
+
+
+
+
+
+printf END >&2; uptime >&2
+date >&2

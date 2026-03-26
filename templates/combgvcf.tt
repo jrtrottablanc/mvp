@@ -1,0 +1,41 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# inout
+variants=$(for sample in $(grep -v "^#" [% levelDir %]/[% levelId %]_samples_rawdata.tsv | cut -f 2); do echo $sample; done | awk '{print "--variant [% inputDir %]/"$0"/"$0".[% chr %].g.vcf.gz "}')
+
+# CombineGVCFs
+echo "# INFO - Running CombineGVFs ..." >&2
+mkdir gatktmp.[% chr %]
+apptainer run --no-home --bind ${bindDir} ${contDir}/${gatk4Cont} gatk CombineGVCFs \
+--tmp-dir gatktmp.[% chr %] \
+--reference ${fasta} \
+--output [% levelId %].[% chr %].g.vcf.gz \
+${variants};
+if [ $? != 0 ]; then echo "ERROR : comgvcf [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+rm -rf gatktmp.[% chr %]
+
+printf END >&2; uptime >&2
+date >&2

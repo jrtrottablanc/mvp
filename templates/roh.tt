@@ -1,0 +1,81 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+mkdir -p [% levelId %].PlinkOut
+
+# DP and GQ filter
+echo "# INFO - Running DP and GQ filter ..." >&2
+zcat [% input %] | \
+awk '{ if ( /^#/) print $0; else if (length($4)==1 && length($5)==1 && $5!~/\*/ && $5!~/,/) print $0;}' | \
+grep -ve "${rohGrep}" | \
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools view \
+-i 'MIN(FMT/DP)>=10 & MIN(FMT/GQ)>=90' - \
+> [% levelId %].DP10.GQ90.clean.SNVonly.vcf
+if [ $? != 0 ]; then echo "ERROR : roh [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# plink recode
+echo "# INFO - Running plink recode ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${plinkCont} plink \
+--vcf [% levelId %].DP10.GQ90.clean.SNVonly.vcf \
+--recode \
+--const-fid \
+--out [% levelId %].PlinkOut/[% levelId %]
+if [ $? != 0 ]; then echo "ERROR : roh [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# plink make-bed
+echo "# INFO - Running plink make-bed ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${plinkCont} plink \
+--file [% levelId %].PlinkOut/[% levelId %] \
+--make-bed \
+--out [% levelId %].PlinkOut/[% levelId %].int;
+if [ $? != 0 ]; then echo "ERROR : roh [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# plink run
+echo "# INFO - Running plink ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${plinkCont} plink \
+--bfile [% levelId %].PlinkOut/[% levelId %].int \
+--homozyg \
+--homozyg-snp 100 \
+--homozyg-window-snp 50 \
+--homozyg-density 50 \
+--homozyg-gap 1000 \
+--homozyg-window-threshold 0.05 \
+--homozyg-window-het 1 \
+--homozyg-kb 500 \
+--out [% levelId %].PlinkOut/[% levelId %]
+if [ $? != 0 ]; then echo "ERROR : roh [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# copy results
+echo "# INFO - Copying results ..." >&2
+cp -v [% levelId %].PlinkOut/[% levelId %].hom .
+if [ $? != 0 ]; then echo "ERROR : roh [step#5] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# IGV track
+echo "# INFO - Creating IGV track ..." >&2
+sed -n '2,$p' [% levelId %].hom | awk '{print $4"\t"$7"\t"$8}' > [% levelId %].hom.bed
+if [ $? != 0 ]; then echo "ERROR : roh [step#6] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

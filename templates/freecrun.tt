@@ -1,0 +1,239 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${funcDir}/candidateGenes.sh
+
+source ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf
+
+if [ "${freecMaleBase}" = "NA" ] || [ "${freecFemaleBase}" = "NA" ]; then
+	echo "# INFO - Baseline is not available, skipping freec for sample [[% levelId %]]" | tee -a [% stepDir %]/freec.log >&2
+else
+	echo "# INFO - Configuring Control-Freec ..." >&2
+	# app param
+	if [ "[% app %]" = "WGS" ]; then
+		windowSize=[% windowSize %]
+		stepSize=$(( ${windowSize}/5 ))
+		stepTF=""
+		bafTF="#"
+		roiTF="#"
+	else
+		windowSize=[% windowSize %]
+		stepSize=0
+		stepTF="#"
+		bafTF=""
+		roiTF=""
+	fi
+	# sex param
+	if [ "[% sex %]" = 1 ]; then
+		freecSex='XY'
+		baselineBCAM=${freecMaleBase}
+		echo "# INFO - Sample is male, baseline will be [${freecMaleBase}]" >&2
+	elif [ "[% sex %]" = 2 ]; then
+		freecSex='XX'
+		baselineBCAM=${freecFemaleBase}
+		echo "# INFO - Sample is female, baseline will be [${freecFemaleBase}]" >&2
+	else
+		freecSex='XY'
+		baselineBCAM=${freecMaleBase}
+		echo "# INFO - Sample is neither male or female, male baseline will be used [${freecMaleBase}]" >&2
+	fi
+
+	# file format
+	BCAMname=$(basename "[% input %]")
+	BCAMext="${BCAMname##*.}"
+	baselineBCAMname=$(basename "${baselineBCAM}")
+	baselineBCAMext="${baselineBCAMname##*.}"
+	# freecprep conf
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define freec_cpu=[% cpu %] \
+	--define windowSize=${windowSize} \
+	--define stepSize=${stepSize} \
+	--define freecChrLen=${freecChrLen} \
+	--define freecPloidy=${freecPloidy} \
+	--define freecChrDir=${freecChrDir} \
+	--define freecMappa=${freecMappa} \
+	--define freecMakepileup=${freecMakepileup} \
+	--define fasta=${fasta} \
+	--define freecSnpfile=${freecSnpfile} \
+	--define freecBed=${freecBed} \
+	--define stepTF=${stepTF} \
+	--define bafTF=${bafTF} \
+	--define roiTF=${roiTF} \
+	--define outputDir=[% stepDir %] \
+	--define sex=${freecSex} \
+	--define inputBCAM=[% input %] \
+	--define formatInput='BAM' \
+	--define baselineBCAM=${baselineBCAM} \
+	--define formatBaseline='BAM' \
+	${ttDir}/${freecprep_tt} > [% levelId %].freec.conf.txt
+	if [ $? != 0 ]; then echo "ERROR : freec [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	echo "# INFO - Running Control-Freec ..." >&2
+	module purge >&2
+	module use /software/dat/modules/all >&2
+	module load SAMtools/1.15-GCC-11.2.0 >&2
+	module load Sambamba/0.8.0-GCC-10.2.0 >&2
+	module load BEDTools/2.30.0-GCC-11.2.0 >&2
+	module load Control-FREEC/11.6-GCC-10.2.0 >&2
+	module load GLib/2.69.1-GCCcore-11.2.0 >&2
+	freec -conf [% levelId %].freec.conf.txt
+	if [ $? != 0 ]; then echo "ERROR : freec [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	module purge >&2
+
+	# graph
+	echo "# INFO - Making graphs ..." >&2
+	if [ "${bafTF}" = "" ]; then
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${freecCont} cat /opt/conda/bin/makeGraph.R | \
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${freecCont} R --slave --args 2 [% levelId %].${BCAMext}_ratio.txt [% levelId %].${BCAMext}_BAF.txt
+		if [ $? != 0 ]; then echo "ERROR : freec [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	else
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${freecCont} cat /opt/conda/bin/makeGraph.R | \
+		apptainer run --no-home --bind ${bindDir} ${contDir}/${freecCont} R --slave --args 2 [% levelId %].${BCAMext}_ratio.txt
+		if [ $? != 0 ]; then echo "ERROR : freec [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	fi
+	echo "# INFO - Renaming graphs ..." >&2
+	if [ "${bafTF}" = "" ]; then
+		mv -v [% levelId %].${BCAMext}_ratio.txt.png [% levelId %].freec.${windowSize}.png >&2
+		mv -v [% levelId %].${BCAMext}_BAF.txt.png [% levelId %].freec.${windowSize}.BAF.png >&2
+		if [ $? != 0 ]; then echo "ERROR : freec [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	else
+		mv -v [% levelId %].${BCAMext}_ratio.txt.png [% levelId %].freec.${windowSize}.png >&2
+		if [ $? != 0 ]; then echo "ERROR : freec [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	fi
+
+	# significance
+	echo "# INFO - Assesing significance ..." >&2
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${freecCont} cat /opt/conda/bin/assess_significance.R | \
+	apptainer run --no-home --bind ${bindDir} ${contDir}/${freecCont} R --slave --args [% levelId %].${BCAMext}_CNVs [% levelId %].${BCAMext}_ratio.txt
+	if [ $? != 0 ]; then echo "ERROR : freec [step#5] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	echo "# INFO - Renaming files ..." >&2
+	mv -v [% levelId %].${BCAMext}_CNVs.p.value.txt [% levelId %].freec.${windowSize}.p.value.txt >&2
+	if [ $? != 0 ]; then echo "ERROR : freec [step#6] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+	if [ -s [% levelId %].freec.${windowSize}.p.value.txt ]; then
+
+		# convert to BED
+		echo "# INFO - Converting to BED ..." >&2
+		if [ "${bafTF}" = "" ]; then
+			grep -v "^chr" [% levelId %].freec.${windowSize}.p.value.txt | \
+			grep -v "\sneutral\s" | \
+			awk '{if($3>$2){print $1"\t"$2"\t"$3"\t"$5"\t"$4"\t"$8"\t"$9"\t[% levelId %]"}}' | \
+			sed 's/loss/DEL/g' | sed 's/gain/DUP/g' | \
+			sort -k 1,1 | \
+			awk '{if($4=="DUP");print $1"\t"$2"\t"$3"\t"$4"\t"$8"\t"$5"\t"$6"\t"$7}' \
+			> [% levelId %].freec.${windowSize}.p.value.bed
+		else
+			grep -v "^chr" [% levelId %].freec.${windowSize}.p.value.txt | \
+			grep -v "\sneutral\s" | \
+			awk '{print $1"\t"$2"\t"$3"\t"$5"\t"$4"\t"$6"\t"$7"\t[% levelId %]"}' | \
+			sed 's/loss/DEL/g' | sed 's/gain/DUP/g' | \
+			sort -k 1,1 | \
+			awk '{if($4=="DUP");print $1"\t"$2"\t"$3"\t"$4"\t"$8"\t"$5"\t"$6"\t"$7}' \
+			> [% levelId %].freec.${windowSize}.p.value.bed
+		fi
+		if [ $? != 0 ]; then echo "ERROR : freec [step#7] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+		# annotsv
+		echo "# INFO - Annotating with annotsv ..." >&2
+		mkdir -pv [% levelId %]_TMP >&2
+		if [ $? != 0 ]; then echo "ERROR : freec [step#8] [${cmdFile}]" >> ${errLog}; exit 1; fi
+		apptainer run --no-home \
+		--bind /scratch_isilon/groups/dat/apps/ANNOTSV/3.4.4_patch/AnnotSV-write.tcl.local:/usr/local/share/tcl8.6/AnnotSV/AnnotSV-write.tcl \
+		--bind ${bindDir} ${contDir}/${annotsvCont} AnnotSV \
+		-samplesidBEDcol 5 \
+		-annotationMode both \
+		-SVinputFile [% levelId %].freec.${windowSize}.p.value.bed \
+		-svtBEDcol 4 \
+		-outputDir [% levelId %]_TMP/ \
+		-outputFile [% levelId %].freec.${windowSize}.annot.tsv \
+		-genomeBuild ${annotsvRef} \
+		-tx ${annotsvDb} \
+		-SVminSize 5 \
+		-annotationsDir ${annotsvAnnotDir} \
+		-variantconvertDir /scratch_isilon/groups/dat/apps/VARIANTCONVERT/2.0.1/ \
+		-vcf 1 \
+		-variantconvertMode full \
+		-SVinputInfo 1 \
+		-includeCI 0 \
+		-overlap 100 \
+		-reciprocal 1 \
+		> [% levelId %].freec.${windowSize}.annot.log
+		if [ $? != 0 ]; then echo "ERROR : freec [step#9] [${cmdFile}]" >> ${errLog}; exit 1; fi
+		mv -v [% levelId %]_TMP/* . >&2
+		rm -rv [% levelId %]_TMP >&2
+		sed -i 's/user#1/ControlFreeC_CopyNumber/' [% levelId %].freec.${windowSize}.annot.tsv
+		sed -i 's/user#2/ControlFreeC_WilcoxonRankSumTestPvalue/' [% levelId %].freec.${windowSize}.annot.tsv
+		sed -i 's/user#3/ControlFreeC_KolmogorovSmirnovPvalue/' [% levelId %].freec.${windowSize}.annot.tsv
+
+		# candidate genes
+		echo "# INFO - Tagging candidate genes ..." >&2
+		check_input_genes "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+		cp [% levelId %].freec.${windowSize}.annot.tsv [% levelId %].freec.${windowSize}.annot.tag.tsv
+		if [ $? != 0 ]; then echo "ERROR : freec [step#10] [${cmdFile}]" >> ${errLog}; exit 1; fi
+		tag_annotsv_in_candidate_genes "[% levelId %]" "freec.${windowSize}" "${geneDir}" "${candidateGenes}" "${cmdFile}" "${errLog}"
+		
+		# visualization track
+		if [ "${var2trackFreec}" != "NA" ]; then
+			# full annotation only
+			echo "# INFO - Getting 'full' annotation only ..." >&2
+			grep -e 'Annotation_mode' -e "\sfull\s" [% levelId %].freec.${windowSize}.annot.tag.tsv > [% levelId %].freec.${windowSize}.annot.tag.full.tsv
+			if [ $? != 0 ]; then echo "ERROR : freec [step#11] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+			# variantconvert
+			module purge >&2
+			module load Python/3.10.8 >&2
+			source /scratch_isilon/groups/dat/apps/VARIANTCONVERT/1.2.2/variantconvert_venv/bin/activate >&2
+			export TMPDIR=/scratch_isilon/groups/dat/apps/MVPGermline/tmpdir
+			echo "# INFO - Creating visualization track ..." >&2
+			variantconvert convert \
+			-i [% levelId %].freec.${windowSize}.annot.tag.full.tsv \
+			-o [% levelId %].freec.${windowSize}.annot.tag.full.vcf \
+			-fi AnnotSV \
+			-fo VCF \
+			-c ${confDir}/${var2trackFreec}
+			if [ $? != 0 ]; then echo "ERROR : freec [step#12] [$cmdFile}]" >> ${errLog}; exit 1; fi
+			deactivate
+			module purge >&2
+
+			# VCF compress
+			echo "# INFO - Compressing VCF ..." >&2
+			apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -f [% levelId %].freec.${windowSize}.annot.tag.full.vcf
+			if [ $? != 0 ]; then echo "ERROR : freec [step#13] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+			# VCF indexes
+			echo "# INFO - Creating VCF indexes ..." >&2
+			apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -f -p vcf [% levelId %].freec.${windowSize}.annot.tag.full.vcf.gz
+			if [ $? != 0 ]; then echo "ERROR : freec [step#14] [${cmdFile}]" >> ${errLog}; exit 1; fi
+		else
+			echo "Undefined var2trackFreec [${var2trackFreec}], skipping visualization track creation" > [% levelId %].freec.${windowSize}.annot.tag.full.log
+		fi
+	else
+		echo "No variant detected" > [% levelId %].freec.${windowSize}.annot.tag.tsv
+	fi
+
+fi
+
+printf END >&2; uptime >&2
+date >&2

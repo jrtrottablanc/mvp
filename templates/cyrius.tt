@@ -1,0 +1,39 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+echo "# INFO - Preparing manifest ..." >&2
+echo [% input %] > [% levelId %]_cyrius_manifest.txt 
+if [ $? != 0 ]; then echo "ERROR : cyrius [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi 
+
+echo "# INFO - Running cyrius star caller ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${cyriusCont} python3 /opt/Cyrius-1.1.1/star_caller.py \
+-m [% levelId %]_cyrius_manifest.txt \
+-g ${cyriusDb} \
+-o [% stepDir %] \
+-p [% levelId %].cyrius
+if [ $? != 0 ]; then echo "ERROR : cyrius [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

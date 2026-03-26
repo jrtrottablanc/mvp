@@ -1,0 +1,80 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# sex param
+echo "# INFO - Defining sex ..." >&2
+if [ "[% sex %]" = 1 ]; then
+	sexID='1'
+	sexName='Male'
+	echo "# INFO - Sample is male" >&2
+elif [ "[% sex %]" = 2 ]; then
+	sexID='2'
+	sexName='Female'
+	echo "# INFO - Sample is female" >&2
+else
+	sexID='1'
+	sexName='Male'
+	echo "# INFO - Sample is neither male or female, male will be used" >&2
+fi
+
+# bam2IRobject2022
+echo "# INFO - Computing EDobject ..." >&2
+apptainer exec --bind ${bindDir} ${contDir}/${exdepthCont} /usr/bin/bam2EDobject.R \
+-A [% input %] \
+-S [% levelId %] \
+-X ${sexID} \
+-D . \
+-F ${fasta} \
+-G [% exdepthRef %] \
+-B [% roiBed %]
+if [ $? != 0 ]; then echo "ERROR : exdepthprep [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# centralized folder
+echo "# INFO - Copying to centralized folder ..." >&2
+nboFile=$(ls -1d [% exdepthPath %]/* | wc -l)
+if [ "$nboFile" -lt "500" ]; then
+	cp -fv [% levelId %]_${sexName}_EDobject.gz [% exdepthPath %]/ >&2
+	if [ $? != 0 ]; then echo "ERROR : exdepthprep [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+else
+	echo "There are already more than 500 intermediate files into [% exdepthPath %]" >&2
+fi
+
+
+
+#~ echo "# INFO - Moving to centralized folder ..." >&2
+#~ if [ -f [% exdepthPath %]/[% sample %]_${sex}_EDobject.gz ]; then
+	#~ mkdir -pv [% exdepthPath %]_old >&2
+	#~ mv -fv [% exdepthPath %]/[% sample %]_${sex}_EDobject.gz [% exdepthPath %]_old/[% sample %]_${sex}_EDobject.gz >&2
+	#~ if [ $? != 0 ]; then echo "ERROR : exdepthprep [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+#~ fi
+#~ nboFile=$(ls -1d [% exdepthPath %]/* | wc -l)
+#~ if [ "$nboFile" -lt "500" ]; then
+	#~ mv -fv [% sample %]_${sex}_EDobject.gz [% exdepthPath %]/ >&2
+	#~ if [ $? != 0 ]; then echo "ERROR : exdepthprep [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+#~ else
+	#~ echo "There are already more than 500 intermediate files into [% exdepthPath %]" >&2
+#~ fi
+
+printf END >&2; uptime >&2
