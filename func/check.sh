@@ -44,7 +44,7 @@ check_job() {
 
 check_missing() {
 	local file="$1"
-	[ ! -f "$file" ] && echo "ERROR : Output missing, expected [$file]" | tee -a "$checkLog"
+	[ ! -s "$file" ] && echo "ERROR : Output missing or empty, expected [$file]" | tee -a "$checkLog"
 }
 
 check_cntvar() {
@@ -75,7 +75,9 @@ copy_or_log() {
     local name="$3"
 
     if [ -f "$file" ]; then
-        cp "$file" "$dest"
+	if [ ! -f "$dest/$name" ]; then
+        	cp "$file" "$dest"
+	fi
     else
         echo "# INFO - Computationally unavailable file : $name" >> "$dest/expectedNA.log"
     fi
@@ -126,7 +128,9 @@ copy_or_error() {
 	if [ ! -f "$stepFile" ]; then
 		echo "ERROR : Output missing, expected [$stepFile]" | tee -a ${cleanLog}
 	else
-		cp "$stepFile" "$stepDest/$stepFname"
+		if [ ! -f "$stepDest/$stepFname" ]; then
+			cp "$stepFile" "$stepDest/$stepFname"
+		fi
 	fi
 }
 

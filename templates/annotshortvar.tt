@@ -78,8 +78,8 @@ mv -v [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz.tbi [% levelId %].[% chr %]
 
 # varType
 echo "# INFO - Adding varType ..." >&2
-apptainer run --no-home --bind ${bindDir} ${contDir}/${snpeffCont} SnpSift varType \
-[% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz | \
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools \
++fill-tags [% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz -- -t TYPE | \
 apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
 if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#2.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
 
@@ -116,8 +116,7 @@ if [ "${snpeffDb}" != "NA" ]; then
 	
 	# snpEff
 	echo "# INFO - Running snpEff ..." >&2
-	module load Java/17.0.2 >&2
-	java -jar /scratch_isilon/groups/dat/apps/SNPEFF/5.2/snpEff.jar \
+	apptainer exec --no-home --bind ${bindDir} ${contDir}/${snpeffCont} snpEff \
 	ann -c ${snpeffConf} -canon -noStats -noLog -o vcf ${snpeffDb} \
 	[% levelId %].[% chr %].g.geno.norm.ann.TEMP.vcf.gz \
 	| apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > [% levelId %].[% chr %].g.geno.norm.ann.vcf.gz

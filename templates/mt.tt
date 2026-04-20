@@ -586,7 +586,7 @@ apptainer exec -B ${bindDir} ${gatk_singularity} gatk LeftAlignAndTrimVariants \
 if [ $? != 0 ]; then echo "ERROR : mt [step#5.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
 
 echo "# INFO - Annotating with gnomAD ..." >&2
-apptainer run --no-home --bind ${bindDir} ${contDir}/${snpeffCont} SnpSift annotate \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${snpsiftCont} SnpSift annotate \
 ${mtGnomad} \
 ${sample_name}.MT_GATK.vcf.gz | \
 apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > ${sample_name}.MT_GATK.gnomAD.vcf.gz
@@ -594,7 +594,7 @@ apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf 
 if [ $? != 0 ]; then echo "ERROR : mt [step#6.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
 
 echo "# INFO - Annotating with Mitomap Disease ..." >&2
-apptainer run --no-home --bind ${bindDir} ${contDir}/${snpeffCont} SnpSift annotate \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${snpsiftCont} SnpSift annotate \
 ${mtMitomapDisease} \
 ${sample_name}.MT_GATK.gnomAD.vcf.gz | \
 apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.vcf.gz
@@ -602,7 +602,7 @@ apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf 
 if [ $? != 0 ]; then echo "ERROR : mt [step#6.2] [${cmdFile}]" >> ${errLog}; exit 1; fi
 
 echo "# INFO - Annotating with Mitomap Polymorphisms ..." >&2
-apptainer run --no-home --bind ${bindDir} ${contDir}/${snpeffCont} SnpSift annotate \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${snpsiftCont} SnpSift annotate \
 ${mtMitomapPolymorphisms} \
 ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.vcf.gz | \
 apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.vcf.gz
@@ -610,7 +610,7 @@ apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf 
 if [ $? != 0 ]; then echo "ERROR : mt [step#6.3] [${cmdFile}]" >> ${errLog}; exit 1; fi
 
 echo "# INFO - Annotating with MitoTIP ..." >&2
-apptainer run --no-home --bind ${bindDir} ${contDir}/${snpeffCont} SnpSift annotate \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${snpsiftCont} SnpSift annotate \
 ${mtMitoTip} \
 ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.vcf.gz | \
 apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > ${sample_name}.MT_GATK.gnomAD.MitoMAP_Disease.MitoMap_polymorphisms.MitoTIP.vcf.gz

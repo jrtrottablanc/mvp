@@ -130,5 +130,22 @@ else
 	echo "# INFO - No ROI configuration defined for [[% app %]], expect [${confDir}/${pipeConf%.conf}_ROI_[% app %].conf], skipping tag with ROI BED" >&2
 fi
 
+# add PASS to all variants
+echo "# INFO - Adding PASS filter ..." >&2
+mv -v [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz [% levelId %].allchr.g.geno.norm.ann.tag.TEMP.vcf.gz
+mv -v [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz.tbi [% levelId %].allchr.g.geno.norm.ann.tag.TEMP.vcf.gz.tbi
+echo "# INFO - Running bcftools filter ..." >&2
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools filter [% levelId %].allchr.g.geno.norm.ann.tag.TEMP.vcf.gz -Oz -o [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : tagfilt [step#12] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo "# INFO - Creating VCF indexes ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : tagfilt [step#13] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i [% levelId %].allchr.g.geno.norm.ann.tag.vcf.gz >&2
+if [ $? != 0 ]; then echo "ERROR : tagfilt [step#14] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo "# INFO - Removing temporary file for padding ..." >&2
+rm -v [% levelId %].allchr.g.geno.norm.ann.tag.TEMP.vcf.gz >&2
+rm -v [% levelId %].allchr.g.geno.norm.ann.tag.TEMP.vcf.gz.tbi >&2
+		
 printf END >&2; uptime >&2
 date >&2

@@ -14,7 +14,7 @@ cat << EOF
 #-------------------------------#
 # Pipeline usage                #
 #-------------------------------#
-$ mvp [parameter]
+$ mvp.sh [parameter]
 
 Parameters:
 	-t      REQ   STR    Task
@@ -49,6 +49,19 @@ cat << EOF
 #-------------------------------#
 EOF
 cat ${pipeDir}/exemple.mvp.conf | sed "s/PIPEVER/${pipeVer}/g"
+
+cat << "EOF"
+
+#-------------------------------#
+# Workflow                      #
+#-------------------------------#
+launch ─► check
+            │
+            ├──► copy ─► copyReport ─► "Request signature" ─► copyReport ─► "Upload into FTP"  ─► email ─► clean ─► tar
+            │
+            └──► copyGPAP ─► Jenkins (Lims_to_DM_internal ─► Annotation_Internal_Simplified ─► Update_Alias_Internal[-cnv])
+EOF
+
 echo
 }
 
@@ -120,9 +133,9 @@ if [ "${cnagProd}" != "yes" ] && [ "${cnagProd}" != "no" ]; then
 	exit 1
 fi
 
-#check_param "${consensus}" "consensus parameter is missing into config file [${uconf}]"
-#if [ "${consensus}" != "yes" ] && [ "${consensus}" != "no" ]; then
-#	echo "ERROR : Unrecognized consensus parameter [${consensus}] into config file [${uconf}]"
+#check_param "${georgia}" "georgia parameter is missing into config file [${uconf}]"
+#if [ "${georgia}" != "yes" ] && [ "${georgia}" != "no" ]; then
+#	echo "ERROR : Unrecognized georgia parameter [${georgia}] into config file [${uconf}]"
 #	exit 1
 #fi
 

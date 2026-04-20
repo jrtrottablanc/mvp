@@ -57,7 +57,7 @@ touch ${copyLog}
 					stepFile=$(printf "%s" "$stepOutput" \
 						| sed -e "s|STEP|$stepName|g" \
 							  -e "s|ANAID|$analysisId|g" \
-							  -e "s|ANA|$anaDir|g" \
+							  -e "s|ANA/|${anaDir}/|g" \
 							  -e "s|PED|$ped|g" \
 							  -e "s|SAMP|$sample|g" \
 							  -e "s|SUB|$stepSub|g" \
@@ -75,7 +75,7 @@ touch ${copyLog}
 					stepLog=$(printf "%s" "$stepLogs" \
 						| sed -e "s|STEP|$stepName|g" \
 							  -e "s|ANAID|$analysisId|g" \
-							  -e "s|ANA|$anaDir|g" \
+							  -e "s|ANA/|${anaDir}/|g" \
 							  -e "s|PED|$ped|g" \
 							  -e "s|SAMP|$sample|g" \
 							  -e "s|SUB|$stepSub|g" \

@@ -1,4 +1,6 @@
 	touch ${launchLog}
+
+#georgia='no'
 	
 	echo "# INFO - Launching MVPGermline pipeline [${now}] ..." | tee -a ${launchLog}
 	
@@ -30,14 +32,14 @@
 				exit 1
 			else
 				echo -e "#pedigree\tbarcode\tsampleName\tsex\tsampleStatus\tsubproject\tapp\tmotherId\tfatherId\tbamcram\tgvcf\tvcf" > ${analysisId}_samples_info.head.tsv
-				if [ "${consensus}" = "no" ]; then
+				if [ "${georgia}" = "no" ]; then
 					${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | \
 					awk -F";" '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,"/scratch_isilon/groups/pbt/jcamps/mappings/samples/"$1"/"$2"/"$5"/"$5".bqsr.bam","/scratch_isilon/groups/pbt/jcamps/mappings/samples/"$1"/"$2"/"$5"/"$5".bqsr.bam.CHRNAME.g.vcf.gz","NA"}' OFS="\t" | \
 					sort -u > ${analysisId}_samples_info.limsq.tsv
 				else
 					${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | \
-					awk -F";" '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,"/scratch_isilon/groups/dat/gkesisoglou/analysis/kapaconsensus/"$2"/results/consensus_calling/"$5"/"$5"_consensus.bam","NA","NA"}' OFS="\t" | \
-					sort -u > ${analysisId}_samples_info.limsq.tsv				
+					awk -F";" '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,"/scratch_isilon/groups/dat/gkesisoglou/analysis/kapaconsensus_no_consensus/"$2"/results/bqsr/"$5"/"$5"_apply_bqsr.bam","NA","NA"}' OFS="\t" | \
+					sort -u > ${analysisId}_samples_info.limsq.tsv		
 				fi
 				
 				while read pedigree sample sampleName sampleStatus subproject app motherId fatherId BCAM GVCF VCF; do

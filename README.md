@@ -68,8 +68,8 @@ all                      :   Run all steps, except allshortvar, gutierrezsarprs 
 wdir=/scratch_isilon/groups/dat/apps/MVPGermline/20260109/TEST
 # Experiment is from CNAG production [yes|no]
 cnagProd=no
-# BAM from consensus reads instead of standard production BAMs
-consensus=no
+# BAM from Georgia instead of standard production BAMs
+georgia=no
 # Analysis ID (Subproject name as appears in LIMS if cnagProd=yes)
 analysisId=TEST_GRCh38
 # Sample sheet in case cnagProd=no
