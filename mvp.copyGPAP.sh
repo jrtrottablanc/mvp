@@ -74,7 +74,11 @@ touch ${copyGPAPLog}
 						wes)
 							[ "$app" != "WGS" ] && copy_or_touch "$stepFile" "$stepDest" ;;
 						wesfreec)
-							[ "$app" != "WGS" ] && copy_or_touch "$stepFile" "$stepDest" ;;
+							if [ "$app" != "WGS" ]; then 
+								if [ -f "$stepFile" ]; then 
+									cp "$stepFile" "$stepDest"
+								fi
+							fi ;;
 						wgsfreectrack)
 							if [ "$var2trackFreec" != "NA" ] && [ "$app" = "WGS" ]; then
 								copy_or_touch "$stepFile" "$stepDest"

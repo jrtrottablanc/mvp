@@ -1,0 +1,389 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf
+
+#-----------------#
+# qcpi.casm       #
+#-----------------#
+jobLab="[% levelId %].qcpi.casm"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.casm ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_casm_qos} \
+--define cpu=${qcpi_casm_cpu} \
+--define mem=${qcpi_casm_mem} \
+--define time="${qcpi_casm_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+${ttDir}/${qcpi_casm_tt} > ${jobCmd}
+casmJob=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${casmJob}" | tee -a ${jobLog} >&2
+
+#-----------------#
+# qcpi.cism       #
+#-----------------#
+jobLab="[% levelId %].qcpi.cism"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.cism ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_cism_qos} \
+--define cpu=${qcpi_cism_cpu} \
+--define mem=${qcpi_cism_mem} \
+--define time="${qcpi_cism_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+${ttDir}/${qcpi_cism_tt} > ${jobCmd}
+cismJob=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${cismJob}" | tee -a ${jobLog} >&2
+
+#-----------------#
+# qcpi.cgcbm      #
+#-----------------#
+jobLab="[% levelId %].qcpi.cgcbm"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.cgcbm ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_cgcbm_qos} \
+--define cpu=${qcpi_cgcbm_cpu} \
+--define mem=${qcpi_cgcbm_mem} \
+--define time="${qcpi_cgcbm_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+${ttDir}/${qcpi_cgcbm_tt} > ${jobCmd}
+cgcbmJob=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${cgcbmJob}" | tee -a ${jobLog} >&2
+	
+#-----------------#
+# qcpi.elc        #
+#-----------------#
+jobLab="[% levelId %].qcpi.elc"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.elc ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_elc_qos} \
+--define cpu=${qcpi_elc_cpu} \
+--define mem=${qcpi_elc_mem} \
+--define time="${qcpi_elc_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+${ttDir}/${qcpi_elc_tt} > ${jobCmd}
+elcJob=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${elcJob}" | tee -a ${jobLog} >&2
+	
+#-----------------#
+# qcpi.cbdbc      #
+#-----------------#
+jobLab="[% levelId %].qcpi.cbdbc"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.cbdbc ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_cbdbc_qos} \
+--define cpu=${qcpi_cbdbc_cpu} \
+--define mem=${qcpi_cbdbc_mem} \
+--define time="${qcpi_cbdbc_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+${ttDir}/${qcpi_cbdbc_tt} > ${jobCmd}
+cbdbcJob=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${cbdbcJob}" | tee -a ${jobLog} >&2
+	
+#-----------------#
+# qcpi.cogm       #
+#-----------------#
+jobLab="[% levelId %].qcpi.cogm"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.cogm ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_cogm_qos} \
+--define cpu=${qcpi_cogm_cpu} \
+--define mem=${qcpi_cogm_mem} \
+--define time="${qcpi_cogm_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+${ttDir}/${qcpi_cogm_tt} > ${jobCmd}
+cogmJob=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${cogmJob}" | tee -a ${jobLog} >&2
+	
+#-----------------#
+# qcpi.cqym       #
+#-----------------#
+jobLab="[% levelId %].qcpi.cqym"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.cqym ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_cqym_qos} \
+--define cpu=${qcpi_cqym_cpu} \
+--define mem=${qcpi_cqym_mem} \
+--define time="${qcpi_cqym_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+${ttDir}/${qcpi_cqym_tt} > ${jobCmd}
+cqymJob=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${cqymJob}" | tee -a ${jobLog} >&2
+	
+#-----------------#
+# qcpi.csam       #
+#-----------------#
+jobLab="[% levelId %].qcpi.csam"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.csam ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_csam_qos} \
+--define cpu=${qcpi_csam_cpu} \
+--define mem=${qcpi_csam_mem} \
+--define time="${qcpi_csam_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+${ttDir}/${qcpi_csam_tt} > ${jobCmd}
+csamJob=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${csamJob}" | tee -a ${jobLog} >&2
+	
+#-------------------#
+# qcpi.mosdepth.eff #
+#-------------------#
+jobLab="[% levelId %].qcpi.mosdepth.eff"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.mosdepth.eff ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_mosdepth_qos} \
+--define cpu=${qcpi_mosdepth_cpu} \
+--define mem=${qcpi_mosdepth_mem} \
+--define time="${qcpi_mosdepth_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+--define covType="eff" \
+${ttDir}/${qcpi_mosdepth_tt} > ${jobCmd}
+mosdeptheffJob=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${mosdeptheffJob}" | tee -a ${jobLog} >&2
+
+#-----------------#
+# qcpi.alfred     #
+#-----------------#
+jobLab="[% levelId %].qcpi.alfred"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.alfred ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_alfred_qos} \
+--define cpu=${qcpi_alfred_cpu} \
+--define mem=${qcpi_alfred_mem} \
+--define time="${qcpi_alfred_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+${ttDir}/${qcpi_alfred_tt} > ${jobCmd}
+alfredJob=$(sbatch --parsable ${jobCmd})
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${alfredJob}" | tee -a ${jobLog} >&2
+	
+# WGS ONLY
+if [ "[% app %]" = "WGS" ]; then
+	#-----------------#
+	# qcpi.indexcov   #
+	#-----------------#
+	jobLab="[% levelId %].qcpi.indexcov"
+	jobCmd="[% stepDir %]/${jobLab}.cmd"
+	jobLog="[% stepDir %]/${jobLab}.jobID.log"
+	echo "# INFO - Submitting qcpi.indexcov ..." >&2
+	apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${qcpi_indexcov_qos} \
+	--define cpu=${qcpi_indexcov_cpu} \
+	--define mem=${qcpi_indexcov_mem} \
+	--define time="${qcpi_indexcov_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define confFile=[% confFile %] \
+	--define stepDir=[% stepDir %] \
+	--define input=[% input %] \
+	--define levelId=[% levelId %] \
+	--define app="[% app %]" \
+	${ttDir}/${qcpi_indexcov_tt} > ${jobCmd}
+	indexcovJob=$(sbatch --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${indexcovJob}" | tee -a ${jobLog} >&2
+		
+	#-----------------#
+	# qcpi.cwgsm      #
+	#-----------------#
+	jobLab="[% levelId %].qcpi.cwgsm"
+	jobCmd="[% stepDir %]/${jobLab}.cmd"
+	jobLog="[% stepDir %]/${jobLab}.jobID.log"
+	echo "# INFO - Submitting qcpi.cwgsm ..." >&2
+	apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${qcpi_cwgsm_qos} \
+	--define cpu=${qcpi_cwgsm_cpu} \
+	--define mem=${qcpi_cwgsm_mem} \
+	--define time="${qcpi_cwgsm_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define confFile=[% confFile %] \
+	--define stepDir=[% stepDir %] \
+	--define input=[% input %] \
+	--define levelId=[% levelId %] \
+	--define app="[% app %]" \
+	${ttDir}/${qcpi_cwgsm_tt} > ${jobCmd}
+	cwgsmJob=$(sbatch --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${cwgsmJob}" | tee -a ${jobLog} >&2
+		
+# WES ONLY
+else
+	#-----------------#
+	# qcpi.chsm       #
+	#-----------------#
+	jobLab="[% levelId %].qcpi.chsm"
+	jobCmd="[% stepDir %]/${jobLab}.cmd"
+	jobLog="[% stepDir %]/${jobLab}.jobID.log"
+	echo "# INFO - Submitting qcpi.chsm ..." >&2
+	apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	--define qos=${qcpi_chsm_qos} \
+	--define cpu=${qcpi_chsm_cpu} \
+	--define mem=${qcpi_chsm_mem} \
+	--define time="${qcpi_chsm_time}" \
+	--define excludeNode=[% excludeNode %] \
+	--define jobLab=${jobLab} \
+	--define confFile=[% confFile %] \
+	--define stepDir=[% stepDir %] \
+	--define input=[% input %] \
+	--define levelId=[% levelId %] \
+	--define app="[% app %]" \
+	${ttDir}/${qcpi_chsm_tt} > ${jobCmd}
+	chsmJob=$(sbatch --parsable ${jobCmd})
+	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	echo -e "${jobCmd}\t${chsmJob}" | tee -a ${jobLog} >&2
+fi
+
+#-----------------#
+# bcftools stats  #
+#-----------------#
+preannotvcf="[% stepDir %]/../../gathervcfpreannot/[% levelId %]/[% levelId %].allchr.g.geno.norm.vcf.gz"
+if [ -f "${preannotvcf}" ]; then
+	echo "# INFO - Getting Short Variants VCF stats [${preannotvcf}]..." >&2
+	cp -v ${preannotvcf} [% levelId %].vcf.gz
+	apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools stats \
+	[% levelId %].vcf.gz > [% levelId %].vcf.stats
+	if [ $? != 0 ]; then echo "ERROR : Cannot get Short Variants VCF stats [${cmdFile}]" >> ${errLog}; exit 1; fi
+	rm [% levelId %].vcf.gz
+else
+	echo "# INFO - Short Variants VCF does not exist [${preannotvcf}], skipping VCF stats" >&2
+fi
+
+#-----------------#
+# qcpi.multiqc    #
+#-----------------#
+jobLab="[% levelId %].qcpi.multiqc"
+jobCmd="[% stepDir %]/${jobLab}.cmd"
+jobLog="[% stepDir %]/${jobLab}.jobID.log"
+echo "# INFO - Submitting qcpi.multiqc ..." >&2
+apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
+--define qos=${qcpi_multiqc_qos} \
+--define cpu=${qcpi_multiqc_cpu} \
+--define mem=${qcpi_multiqc_mem} \
+--define time="${qcpi_multiqc_time}" \
+--define excludeNode=[% excludeNode %] \
+--define jobLab=${jobLab} \
+--define confFile=[% confFile %] \
+--define stepDir=[% stepDir %] \
+--define input=[% input %] \
+--define levelId=[% levelId %] \
+--define app="[% app %]" \
+${ttDir}/${qcpi_multiqc_tt} > ${jobCmd}
+if [ "${roiBed}" = "NA" ]; then	
+	multiqcJob=$(sbatch --dependency=afterany:$casmJob:$cismJob:$cgcbmJob:$elcJob:$cbdbcJob:$cogmJob:$cqymJob:$csamJob:$mosdeptheffJob:$alfredJob:$indexcovJob:$cwgsmJob --parsable ${jobCmd})
+else
+	multiqcJob=$(sbatch --dependency=afterany:$casmJob:$cismJob:$cgcbmJob:$elcJob:$cbdbcJob:$cogmJob:$cqymJob:$csamJob:$mosdeptheffJob:$alfredJob:$chsmJob --parsable ${jobCmd})
+fi
+if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+echo -e "${jobCmd}\t${multiqcJob}" | tee -a ${jobLog} >&2
+
+printf END >&2; uptime >&2
+date >&2

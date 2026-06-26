@@ -1,0 +1,5 @@
+{
+    "known_indels": "/scratch_isilon/groups/dat/data/AMANDA/hg38/db_annotation/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz",
+    "known_indels_tbi": "/scratch_isilon/groups/dat/data/AMANDA/hg38/db_annotation/Mills_and_1000G_gold_standard.indels.hg38.vcf.gz.tbi",
+    "intervals": "/shared/pbt/targetcapture/Kapa_HyperExome_v2_mt/Kapa.HyperExome.v2.mt_hsapiens.hg38_captureTarget.merge.bed"
+}

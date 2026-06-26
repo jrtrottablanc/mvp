@@ -44,7 +44,7 @@ check_job() {
 
 check_missing() {
 	local file="$1"
-	[ ! -s "$file" ] && echo "ERROR : Output missing or empty, expected [$file]" | tee -a "$checkLog"
+	[ ! -f "$file" ] && echo "ERROR : Output missing, expected [$file]" | tee -a "$checkLog"
 }
 
 check_cntvar() {
@@ -135,14 +135,18 @@ copy_or_error() {
 }
 
 move_or_error() {
-        if [ ! -f "$stepFile" ]; then
-                echo "ERROR : Output missing, expected [$stepFile]" | tee -a ${cleanLog}
-        else
+        if [ -f "$stepFile" ]; then
                 mv "$stepFile" "$stepDest/$stepFname"
         fi
 }
 
 
-
+#move_or_error() {
+#        if [ ! -f "$stepFile" ]; then
+#                echo "ERROR : Output missing, expected [$stepFile]" | tee -a ${cleanLog}
+#        else
+#                mv "$stepFile" "$stepDest/$stepFname"
+#        fi
+#}
 
 

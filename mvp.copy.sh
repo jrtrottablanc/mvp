@@ -47,6 +47,7 @@ touch ${copyLog}
 			while read -r pedigree; do
 				pedDir="${anaDir}/${pedigree}"
 				nSampPed=$(grep -vc "^#" "$pedDir/${pedigree}_samples_rawdata.tsv")
+				automaps=$(grep -v "^#" $pedDir/${pedigree}_samples_rawdata.tsv | cut -f 2 | paste -d"_" -s -)
 
 				grep "^${pedigree}\s" "$anaDir/${analysisId}_samples_rawdata.tsv" |
 				while read -r ped sample app sex bcam gvcf vcf; do
@@ -61,6 +62,7 @@ touch ${copyLog}
 							  -e "s|PED|$ped|g" \
 							  -e "s|SAMP|$sample|g" \
 							  -e "s|SUB|$stepSub|g" \
+							  -e "s|AUTOMAPS|$automaps|g" \
 							  -e "s|APP|$app|g" \
 							  -e "s|MANEPREFIX|$manePrefix|g")
 
@@ -95,6 +97,12 @@ touch ${copyLog}
 						nsped)
 							if [ "$nSampPed" -gt 1 ]; then
 								copy_or_log "$stepFile" "$stepDest" "$stepFileName"
+							elif [ "$stepLog" != "nan" ]; then
+								cp "$stepLog" "$stepDest/expectedNA.log"
+							fi ;;
+						nspedmanta)
+                            if [ "$nSampPed" -gt 1 ] && [ "$nSampPed" -le 5 ]; then
+								 copy_or_log "$stepFile" "$stepDest" "$stepFileName"
 							elif [ "$stepLog" != "nan" ]; then
 								cp "$stepLog" "$stepDest/expectedNA.log"
 							fi ;;

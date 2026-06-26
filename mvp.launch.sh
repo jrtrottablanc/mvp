@@ -1,6 +1,4 @@
 	touch ${launchLog}
-
-#georgia='no'
 	
 	echo "# INFO - Launching MVPGermline pipeline [${now}] ..." | tee -a ${launchLog}
 	
@@ -20,47 +18,55 @@
 	mkdir -p ${anaDir}
 	cd ${anaDir}
 
-	#--------------#
-	# sample sheet #
-	#--------------#
+	#-------------------#
+	# sample sheet      #
+	#-------------------#
+	if [ "${umipreprocessing}" = "yes" ]; then
+		echo "# INFO - Creating UMI-preprocessing sampleSheet ..." >&2
+		/home/groups/dat/gkesisoglou/bin/lims2samplesheet.sh ${analysisId} >&2
+		if [ $? != 0 ]; then echo "ERROR : Cannot create UMI-preprocessing sampleSheet [${jobCmd}]" >> ${errLog}; exit 1; fi
+		mv -v ${analysisId}_Samplesheet.csv ${analysisId}.umipreprocessing_Samplesheet.csv
+	fi
 	echo "# INFO - Creating analysis sample sheet [${anaDir}/${analysisId}_samples_info.tsv] ..." | tee -a ${launchLog}
-	#~ if [ ! -f ${anaDir}/${analysisId}_samples_info.tsv ]; then
-		if [ "${cnagProd}" = "yes" ]; then	
-			limsSubproj=$(${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
-			if [ "${limsSubproj}" = "" ]; then
-				echo "ERROR : cnagProd 'yes' but unrecognized LIMS subproject [${analysisId}]"
-				exit 1
-			else
-				echo -e "#pedigree\tbarcode\tsampleName\tsex\tsampleStatus\tsubproject\tapp\tmotherId\tfatherId\tbamcram\tgvcf\tvcf" > ${analysisId}_samples_info.head.tsv
-				if [ "${georgia}" = "no" ]; then
-					${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | \
-					awk -F";" '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,"/scratch_isilon/groups/pbt/jcamps/mappings/samples/"$1"/"$2"/"$5"/"$5".bqsr.bam","/scratch_isilon/groups/pbt/jcamps/mappings/samples/"$1"/"$2"/"$5"/"$5".bqsr.bam.CHRNAME.g.vcf.gz","NA"}' OFS="\t" | \
-					sort -u > ${analysisId}_samples_info.limsq.tsv
-				else
-					${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | \
-					awk -F";" '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,"/scratch_isilon/groups/dat/gkesisoglou/analysis/kapaconsensus_no_consensus/"$2"/results/bqsr/"$5"/"$5"_apply_bqsr.bam","NA","NA"}' OFS="\t" | \
-					sort -u > ${analysisId}_samples_info.limsq.tsv		
-				fi
-				
-				while read pedigree sample sampleName sampleStatus subproject app motherId fatherId BCAM GVCF VCF; do
-					while read sp bc colSex pcrStr covStr; do
-						covSex=0; \
-						if (( $(echo "$covStr >= 0.2" | bc -l) )); then covSex=1; fi
-						if (( $(echo "$covStr < 0.2" | bc -l) )); then covSex=2; fi
-					done < <(${funcDir}/sexBySamp.sh -s $sample -p $subproject | grep -v "^#")
-					echo -e "$pedigree\t$sample\t$sampleName\t$covSex\t$sampleStatus\t$subproject\t$app\t$motherId\t$fatherId\t$BCAM\t$GVCF\t$VCF"
-				done < ${analysisId}_samples_info.limsq.tsv > ${analysisId}_samples_info.tmp.tsv
-				cat ${analysisId}_samples_info.head.tsv ${analysisId}_samples_info.tmp.tsv > ${analysisId}_samples_info.tsv
-				rm ${analysisId}_samples_info.head.tsv ${analysisId}_samples_info.limsq.tsv ${analysisId}_samples_info.tmp.tsv
-			fi
+	if [ "${cnagProd}" = "yes" ]; then	
+		limsSubproj=$(${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
+		if [ "${limsSubproj}" = "" ]; then
+			echo "ERROR : cnagProd 'yes' but unrecognized LIMS subproject [${analysisId}]"
+			exit 1
 		else
-			cat ${realSampleSheet} > ${analysisId}_samples_info.tsv
+			echo -e "#pedigree\tbarcode\tsampleName\tsex\tsampleStatus\tsubproject\tapp\tmotherId\tfatherId\tbamcram\tgvcf\tvcf" > ${analysisId}_samples_info.head.tsv
+			if [ "${umipreprocessing}" = "yes" ]; then
+				${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | \
+				awk -F";" -v ANADIR=${anaDir} -v ANAID=${analysisId} '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,ANADIR"/"ANAID".umipreprocessing/bqsr/"$5"/"$5"_apply_bqsr.bam","NA","NA"}' OFS="\t" | \
+				sort -u > ${analysisId}_samples_info.limsq.tsv
+			elif [ "${georgia}" = "yes" ]; then
+				${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | \
+				awk -F";" '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,"/scratch_isilon/groups/dat/gkesisoglou/analysis/kapaconsensus_no_consensus/"$2"/results/bqsr/"$5"/"$5"_apply_bqsr.bam","NA","NA"}' OFS="\t" | \
+				sort -u > ${analysisId}_samples_info.limsq.tsv
+			else
+				${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | \
+				awk -F";" '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,"/scratch_isilon/groups/pbt/jcamps/mappings/samples/"$1"/"$2"/"$5"/"$5".bqsr.bam","/scratch_isilon/groups/pbt/jcamps/mappings/samples/"$1"/"$2"/"$5"/"$5".bqsr.bam.CHRNAME.g.vcf.gz","NA"}' OFS="\t" | \
+				sort -u > ${analysisId}_samples_info.limsq.tsv
+			fi
+				
+			while read pedigree sample sampleName sampleStatus subproject app motherId fatherId BCAM GVCF VCF; do
+				while read sp bc colSex pcrStr covStr; do
+					covSex=0; \
+					if (( $(echo "$covStr >= 0.2" | bc -l) )); then covSex=1; fi
+					if (( $(echo "$covStr < 0.2" | bc -l) )); then covSex=2; fi
+				done < <(${funcDir}/sexBySamp.sh -s $sample -p $subproject | grep -v "^#")
+				echo -e "$pedigree\t$sample\t$sampleName\t$covSex\t$sampleStatus\t$subproject\t$app\t$motherId\t$fatherId\t$BCAM\t$GVCF\t$VCF"
+			done < ${analysisId}_samples_info.limsq.tsv > ${analysisId}_samples_info.tmp.tsv
+			cat ${analysisId}_samples_info.head.tsv ${analysisId}_samples_info.tmp.tsv > ${analysisId}_samples_info.tsv
+			rm ${analysisId}_samples_info.head.tsv ${analysisId}_samples_info.limsq.tsv ${analysisId}_samples_info.tmp.tsv
 		fi
-	#~ fi
+	else
+		cat ${realSampleSheet} > ${analysisId}_samples_info.tsv
+	fi
 	
-	#--------------#
-	# sheet check  #
-	#--------------#
+	#-------------------#
+	# sheet check       #
+	#-------------------#
 	echo "# INFO - Checking sample sheet information [${anaDir}/${analysisId}_samples_info.tsv] ..." | tee -a ${launchLog}
 	expected_fields=("#pedigree" "barcode" "sampleName" "sex" "sampleStatus" "subproject" "app" "motherId" "fatherId" "bamcram" "gvcf" "vcf")
 	line_number=0
@@ -86,10 +92,14 @@
 		fi
 	done < ${analysisId}_samples_info.tsv
 	
-	#--------------#
-	# ROI check    #
-	#--------------#
+	#-------------------#
+	# ROI check         #
+	#-------------------#
 	while read app; do
+		if [ "${umipreprocessing}" = "yes" ]; then
+			echo "# INFO - Checking umipreprocessing ROI configuration for app [${app}] [${confDir}/${pipeConf%.conf}_nf-params_${app}.json] ..." | tee -a ${launchLog}
+			check_file "${pipeConf%.conf}_nf-params_${app}.json" "${confDir}/${pipeConf%.conf}_nf-params_${app}.json"
+		fi
 		echo "# INFO - Checking pipeline ROI configuration for app [${app}] [${confDir}/${pipeConf%.conf}_ROI_${app}.conf] ..." | tee -a ${launchLog}
 		if [ -f ${confDir}/${pipeConf%.conf}_ROI_${app}.conf ]; then
 			source ${confDir}/${pipeConf%.conf}_ROI_${app}.conf
@@ -118,11 +128,11 @@
 				if [ "${freecMappa}" != "NA" ]; then check_file "freecMappa" "${freecMappa}"; fi
 				check_param "${freecSnpfile}" "freecSnpfile parameter is missing into pipeline ROI configuration file [${confDir}/${pipeConf%.conf}_ROI_${app}.conf]"
 				if [ "${freecSnpfile}" != "NA" ]; then check_file "freecSnpfile" "${freecSnpfile}"; fi
-                check_param "${freecMakepileup}" "freecMakepileup parameter is missing into pipeline ROI configuration file [${confDir}/${pipeConf%.conf}_ROI_${app}.conf]"
-                if [ "${freecMakepileup}" != "NA" ]; then check_file "freecMakepileup" "${freecMakepileup}"; fi
+ 				check_param "${freecMakepileup}" "freecMakepileup parameter is missing into pipeline ROI configuration file [${confDir}/${pipeConf%.conf}_ROI_${app}.conf]"
+				if [ "${freecMakepileup}" != "NA" ]; then check_file "freecMakepileup" "${freecMakepileup}"; fi
 				if [ "${app}" != "WGS" ]; then
-                check_param "${freecBed}" "freecBed parameter is missing into pipeline ROI configuration file [${confDir}/${pipeConf%.conf}_ROI_${app}.conf]"
-                if [ "${freecBed}" != "NA" ]; then check_file "freecBed" "${freecBed}"; fi
+					check_param "${freecBed}" "freecBed parameter is missing into pipeline ROI configuration file [${confDir}/${pipeConf%.conf}_ROI_${app}.conf]"
+					if [ "${freecBed}" != "NA" ]; then check_file "freecBed" "${freecBed}"; fi
 				fi
 			fi
 		else
@@ -139,20 +149,26 @@
 		exit 1
 	fi
 	
-	#--------------#
-	# settings     #
-	#--------------#
+	#-------------------#
+	# settings          #
+	#-------------------#
 	echo "# INFO - Copying pipeline settings [${confDir}/${pipeConf%.conf}.settings.json] ..." | tee -a ${launchLog}
 	if [ -f ${confDir}/${pipeConf%.conf}.settings.json ]; then
 		cp ${confDir}/${pipeConf%.conf}.settings.json ${anaDir}/
+		clinvarFileDate=$(zgrep "^#" /scratch_isilon/groups/dat/data/CLINVAR/clinvar_GRCh38.vcf.gz | grep fileDate | cut -d "=" -f 2)
+		civicFileDate=$(zgrep "^#" /scratch_isilon/groups/dat/data/CIViC/civic_hg38.chr.vcf.gz | grep fileDate | cut -d "=" -f 2)
+		mitomapFileDate=$(zgrep "^#" /scratch_isilon/groups/dat/data/MT/chrM_MitoMap_disease.vcf.gz | grep fileDate | cut -d "=" -f 2)
+		sed -i "s/CLINVARMONTHLY/${clinvarFileDate}/g" ${anaDir}/${pipeConf%.conf}.settings.json
+		sed -i "s/CIVICMONTHLY/${civicFileDate}/g" ${anaDir}/${pipeConf%.conf}.settings.json
+		sed -i "s/MITOMAPMONTHLY/${mitomapFileDate}/g" ${anaDir}/${pipeConf%.conf}.settings.json
 	else
 		echo "ERROR - Pipeline settings file is missing. Expect [${confDir}/${pipeConf%.conf}.settings.json]" | tee -a ${launchLog}
 		exit 1
 	fi
 	
-	#--------------#
-	# rawdata      #
-	#--------------#
+	#-------------------#
+	# rawdata           #
+	#-------------------#
 	echo "# INFO - Getting rawdata ..." | tee -a ${launchLog}
 	if [ ! -f ${analysisId}_samples_rawdata.tsv ]; then
 		echo -e "#pedigree\tsample\tapp\tsex\tbamcram\tgvcf\tvcf" > ${analysisId}_samples_rawdata.tsv
@@ -167,14 +183,16 @@
 			
 			# bamcram
 			if [ "${BCAM}" != "NA" ]; then
-				if [ -f "${BCAM}" ]; then
+				if [ -f "${BCAM}" ] || [ "${umipreprocessing}" = "yes" ]; then
 					ln -s ${BCAM} ${anaDir}/${pedigree}/rawdata/${sample}/${sample}.${BCAMext}
 				else
 					echo "ERROR : Input BAM/CRAM is not a regular file [${BCAM}]" | tee -a ${launchLog}
 					exit 1
 				fi
-
-				if [ -f ${BCAM}.${BCAMidx} ]; then
+				
+				if [ "${umipreprocessing}" = "yes" ]; then
+					ln -s ${BCAM%.bam}.${BCAMidx} ${anaDir}/${pedigree}/rawdata/${sample}/${sample}.${BCAMidx}
+				elif [ -f ${BCAM}.${BCAMidx} ]; then
 					ln -s ${BCAM}.${BCAMidx} ${anaDir}/${pedigree}/rawdata/${sample}/${sample}.${BCAMidx}
 				elif [ -f ${BCAM%.bam}.${BCAMidx} ]; then
 					ln -s ${BCAM%.bam}.${BCAMidx} ${anaDir}/${pedigree}/rawdata/${sample}/${sample}.${BCAMidx}
@@ -236,13 +254,13 @@
 		
 	done < <(grep -v "^#" ${analysisId}_samples_info.tsv)
 	
-	#--------------#
-	# bam check    #
-	#--------------#
+	#-------------------#
+	# bam check         #
+	#-------------------#
 	echo "# INFO - Checking files integrity ..." | tee -a ${launchLog}
 	while read pedigree sample app sex BCAM GVCF VCF; do
 		# bamcram
-		if [ "${BCAM}" != "NA" ]; then
+		if [ "${BCAM}" != "NA" ] && [ "${umipreprocessing}" = "no" ]; then
 			echo -ne "${BCAM} ... " | tee -a ${launchLog}
 			apptainer run --no-home --bind ${bindDir} ${contDir}/${samtoolsCont} samtools quickcheck -v ${BCAM}
 			if [ $? != 0 ]; then echo -e "FAILED"; exit 1; fi | tee -a ${launchLog}
@@ -250,9 +268,9 @@
 		fi		
 	done < <(grep -v "^#" ${analysisId}_samples_rawdata.tsv)
 
-	#--------------#
-	# report sheet #
-	#--------------#
+	#-------------------#
+	# report sheet      #
+	#-------------------#
 	limsSubproj=$(${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
 	if [ "${limsSubproj}" != "" ]; then
 		echo "# INFO - Generating sample sheet for production report ..." | tee -a ${launchLog}
@@ -282,19 +300,50 @@
 		echo "# INFO - analysisId [${analysisId}] does not correspond to any LIMS subproject, report is not available" | tee -a ${launchLog}
 	fi
 
-	#--------------#
-	# master conf  #
-	#--------------#
+	#-------------------#
+	# master conf       #
+	#-------------------#
 	cat ${confDir}/path.conf \
 	${confDir}/templates.conf \
 	${confDir}/containers.conf \
 	${confDir}/ressources.conf \
 	${confDir}/${pipeConf} \
 	$uconf | grep -v "^#" > ${anaDir}/${analysisId}.mvp.master.conf
-
-	#--------------#
-	# submit mvp   #
-	#--------------#
+	
+	#-------------------#
+	# submit umipreproc #
+	#-------------------#
+	if [ "${umipreprocessing}" = "yes" ]; then
+		if [ ! -d ${anaDir}/${analysisId}.umipreprocessing ]; then
+			jobLab="${analysisId}.umipreprocessing"
+			jobCmd="${anaDir}/${jobLab}.cmd"
+			jobLog="${anaDir}/${jobLab}.jobID.log"
+			errLog="${anaDir}/ERROR.log"
+			app=$(grep -v "^#" ${analysisId}_samples_info.tsv | cut -f 7 | sort -u)
+			echo "# INFO - Submitting umipreprocessing ..." | tee -a ${launchLog}
+			apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+			--define qos=marathon \
+			--define cpu=1 \
+			--define mem=20000 \
+			--define time="167:55:00" \
+			--define excludeNode=${excludeNode} \
+			--define jobLab=${jobLab} \
+			--define anaDir=${anaDir} \
+			--define confFile=${anaDir}/${analysisId}.mvp.master.conf \
+			--define analysisId=${analysisId} \
+			--define app=${app} \
+			${pipeDir}/umipreprocessing.tt > ${jobCmd}
+			umipreprocJobID=$(sbatch --parsable ${jobCmd})
+			if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}]" >> ${errLog}; exit 1; fi
+			echo -e "${jobCmd}\t${umipreprocJobID}" | tee -a ${launchLog} | tee -a ${jobLog}
+		else
+			echo "# INFO - ${anaDir}/${analysisId}.umipreprocessing already exists, skipping umipreprocessing" | tee -a ${launchLog}
+		fi
+	fi
+	
+	#-------------------#
+	# submit mvp        #
+	#-------------------#
 	jobLab="${analysisId}.mvp"
 	jobCmd="${anaDir}/${jobLab}.cmd"
 	jobLog="${anaDir}/${jobLab}.jobID.log"
@@ -312,8 +361,12 @@
 	--define analysisId=${analysisId} \
 	--define step=${step} \
 	${pipeDir}/mvp.tt > ${jobCmd}
-	JID=$(sbatch --parsable ${jobCmd})
+	if [ ! -z "${umipreprocJobID}" ]; then
+		mvpJobID=$(sbatch --dependency=afterok:${umipreprocJobID} --parsable ${jobCmd})
+	else
+		mvpJobID=$(sbatch --parsable ${jobCmd})
+	fi
 	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}]" >> ${errLog}; exit 1; fi
-	echo -e "${jobCmd}\t${JID}" | tee -a ${launchLog} | tee -a ${jobLog}
+	echo -e "${jobCmd}\t${mvpJobID}" | tee -a ${launchLog} | tee -a ${jobLog}
 	
 	echo "# INFO - Done!" | tee -a ${launchLog}

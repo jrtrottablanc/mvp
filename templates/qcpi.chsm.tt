@@ -1,0 +1,53 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf
+
+apptainer run --bind ${bindDir} ${contDir}/${gatk4Cont} gatk BedToIntervalList \
+SD=${fasta} \
+I=${roiBed} \
+O=bed.interval_list \
+VALIDATION_STRINGENCY=LENIENT \
+VERBOSITY=ERROR
+
+if [ $? != 0 ]; then echo "ERROR : qcpi.chsm [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+apptainer run --bind ${bindDir} ${contDir}/${gatk4Cont} gatk CollectHsMetrics \
+R=${fasta} \
+BAIT_INTERVALS=bed.interval_list \
+TARGET_INTERVALS=bed.interval_list \
+MINIMUM_BASE_QUALITY=0 \
+MINIMUM_MAPPING_QUALITY=20 \
+CLIP_OVERLAPPING_READS=true \
+METRIC_ACCUMULATION_LEVEL=null \
+METRIC_ACCUMULATION_LEVEL=ALL_READS \
+OUTPUT=[% levelId %].CollectHsMetrics.metrics.txt \
+VALIDATION_STRINGENCY=LENIENT \
+VERBOSITY=ERROR \
+INPUT=[% input %]
+
+if [ $? != 0 ]; then echo "ERROR : qcpi.chsm [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

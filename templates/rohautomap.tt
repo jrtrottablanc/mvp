@@ -1,0 +1,61 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+
+# uncompressed input VCFs
+echo "# INFO - Getting inputs ..." >&2
+for sample in $(grep -v "^#" [% pedDir %]/[% levelId %]_samples_rawdata.tsv | cut -f 2); do
+	echo "# INFO - Uncompressing VCF [[% pedDir %]/gathervcfpreannot/$sample/$sample.allchr.g.geno.norm.vcf.gz] ..." >&2
+	zcat [% pedDir %]/gathervcfpreannot/$sample/$sample.allchr.g.geno.norm.vcf.gz > $sample.allchr.g.geno.norm.vcf
+done
+if [ $? != 0 ]; then echo "ERROR : roh/automap [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# define automap inputs
+VCFsIN=$(ls -1d *.allchr.g.geno.norm.vcf | paste -d"," -s -)
+VCFsID=$(grep -v "^#" [% pedDir %]/[% levelId %]_samples_rawdata.tsv | cut -f 2 | paste -d"," -s -)
+
+# run automap
+echo "# INFO - Running AutoMap ..." >&2
+module use /software/dat/modules/all >&2
+module load AutoMap/1.3 >&2
+AutoMap.sh \
+--vcf ${VCFsIN} \
+--id ${VCFsID} \
+--out [% stepDir %] \
+--genome ${rohautomapRef} \
+--common >&2
+if [ $? != 0 ]; then echo "ERROR : roh/automap [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+module purge >&2
+
+# cleaning
+echo "# INFO - Cleaning temporary files ..." >&2
+rm -rv *.allchr.g.geno.norm.vcf >&2
+
+nsamp=$(grep -vc "^#" "[% pedDir %]/[% levelId %]_samples_rawdata.tsv")
+if [ "$nsamp" -le 1 ]; then
+	echo "# INFO - Only one sample for this pedigree [[% levelId %]], skipping multautomap" | tee -a [% stepDir %]/multautomap.log >&2
+fi
+
+printf END >&2; uptime >&2
+date >&2

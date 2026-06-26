@@ -6,8 +6,17 @@ touch ${checkLog}
 	
 	echo "# INFO - Analysis folder : [${anaDir}]" | tee -a ${checkLog}
 	
-	echo "# INFO - Checking MVPGermline pipeline jobs status ..." | tee -a ${checkLog}
-	for i in $(cut -f 2 ${anaDir}/*.mvp.jobID.log); do sacct -bn -j ${i} | awk '{print $2}'; done | sort | uniq -c | awk '{printf "%-15s %s\n", $2, $1}' | tee -a ${checkLog}
+	if [ "${umipreprocessing}" = "yes" ]; then
+		echo "# INFO - Checking umipreprocessing job status ..." | tee -a ${checkLog}
+		for i in $(cut -f 2 ${anaDir}/*.umipreprocessing.jobID.log); do 
+			sacct -bn -j ${i} | awk '{print $2}';
+		done | sort | uniq -c | awk '{printf "%-15s %s\n", $2, $1}' | tee -a ${checkLog}
+	fi
+	
+	echo "# INFO - Checking mvp job status ..." | tee -a ${checkLog}
+	for i in $(cut -f 2 ${anaDir}/*.mvp.jobID.log); do 
+		sacct -bn -j ${i} | awk '{print $2}';
+	done | sort | uniq -c | awk '{printf "%-15s %s\n", $2, $1}' | tee -a ${checkLog}
 	
 	# loop on userstep
 	IFS=',' read -r -a stepuser <<< "${step}"
@@ -41,6 +50,7 @@ touch ${checkLog}
 			while read -r pedigree; do
 				pedDir="${anaDir}/${pedigree}"
 				nSampPed=$(grep -vc "^#" "$pedDir/${pedigree}_samples_rawdata.tsv")
+				automaps=$(grep -v "^#" $pedDir/${pedigree}_samples_rawdata.tsv | cut -f 2 | paste -d"_" -s -)
 
 				grep "^${pedigree}\s" "$anaDir/${analysisId}_samples_rawdata.tsv" |
 				while read -r ped sample app sex bcam gvcf vcf; do
@@ -52,6 +62,7 @@ touch ${checkLog}
 							  -e "s|PED|$ped|g" \
 							  -e "s|SAMP|$sample|g" \
 							  -e "s|SUB|$stepSub|g" \
+							  -e "s|AUTOMAPS|$automaps|g" \
 							  -e "s|APP|$app|g" \
 							  -e "s|MANEPREFIX|$manePrefix|g")
 					
@@ -71,6 +82,8 @@ touch ${checkLog}
 							[ "$nSampAna" -gt 1 ] && check_missing "$stepFile" ;;
 						nsped)
 							[ "$nSampPed" -gt 1 ] && check_missing "$stepFile" ;;
+						nspedmanta)
+                            [ "$nSampPed" -gt 1 ] && [ "$nSampPed" -le 5 ] && check_missing "$stepFile" ;;
 						prod)
 							limsSubproj=$($funcDir/limsq_nhopt -nH -sp "$analysisId" -lanepf fail,waiting,under_review | cut -d ";" -f2 | sort -u)
 							[ -n "$limsSubproj" ] && check_missing $stepFile ;;

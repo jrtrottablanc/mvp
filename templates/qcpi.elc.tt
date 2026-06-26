@@ -1,0 +1,40 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf
+
+mkdir -pv [% levelId %].elc.tmp
+
+apptainer run --bind ${bindDir} ${contDir}/${gatk4Cont} gatk --java-options "-Xmx32g" EstimateLibraryComplexity \
+TMP_DIR=[% levelId %].elc.tmp \
+I=[% input %] \
+OPTICAL_DUPLICATE_PIXEL_DISTANCE=2500 \
+O=[% levelId %].MarkDuplicates.metrics.txt
+
+if [ $? != 0 ]; then echo "ERROR : qcpi.elc [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+rm -r [% levelId %].elc.tmp
+
+printf END >&2; uptime >&2
+date >&2

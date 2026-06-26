@@ -38,7 +38,8 @@ echo "# INFO - Generating samples_info, samples_rawdata and PED file by pedigree
 while read pedigree; do
 	pedDir="[% anaDir %]/${pedigree}"
 	
-	#~ if [ ! -f ${pedDir}/${pedigree}_samples_info.tsv ]; then
+	# HERE WE HAVE COMMENTED IN ORDER TO REGENERATE THE SAMPLE SHEET WHEN RE-LAUNCHING ANALYSIS
+	#~ if [ ! -f ${pedDir}/${pedigree}_samples_info.tsv ]; then 
 		echo -e "#pedigree\tsample\tsampleName\tsex\tsampleStatus\tsubproject\tapp\tmotherId\tfatherId\tbamcram\tgvcf\tvcf" > ${pedDir}/${pedigree}_samples_info.tsv
 		grep "^${pedigree}\s" [% analysisId %]_samples_info.tsv >> ${pedDir}/${pedigree}_samples_info.tsv
 		if [ $? != 0 ]; then echo "ERROR : Cannot generate samples_info for pedigree [${pedigree}] [${cmdFile}]" >> ${errLog}; exit 1; fi
@@ -80,6 +81,7 @@ while read pedigree; do
 	# SUBMIT SAMPLE                                #
 	################################################
 	unset hapcallJobIDs
+	unset gathervcfpreannJobIDs
 	while read ped sample app sex BCAM GVCF VCF; do
 		
 		#-----------------#
@@ -161,6 +163,7 @@ while read pedigree; do
 				else
 					gathervcfpreannotJobID=$(sbatch --parsable ${jobCmd})
 				fi
+				gathervcfpreannJobIDs+=($(echo "${gathervcfpreannotJobID}"))
 				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
 				echo -e "${jobCmd}\t$gathervcfpreannotJobID" | tee -a ${jobLog} >&2
 			else
@@ -237,37 +240,37 @@ while read pedigree; do
 		fi
 			
 		#------------------#
-		# roh              #
+		# roh_plink        #
 		#------------------#
 		if [[ " ${stepuser[*]} " =~ " roh " ]]; then
-			echo "# INFO - Submitting roh for pedigree [${pedigree}] and sample [${sample}] ..." >&2
-			stepDir="${pedDir}/roh/${sample}"
+			echo "# INFO - Submitting roh/plink for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/roh/plink/${sample}"
 			if [ ! -d ${stepDir} ]; then
 				mkdir -p ${stepDir}
-				jobLab="${sample}.roh"
+				jobLab="${sample}.rohplink"
 				jobCmd="${stepDir}/${jobLab}.cmd"
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
-				--define qos=${roh_qos} \
-				--define cpu=${roh_cpu} \
-				--define mem=${roh_mem} \
-				--define time="${roh_time}" \
+				--define qos=${rohplink_qos} \
+				--define cpu=${rohplink_cpu} \
+				--define mem=${rohplink_mem} \
+				--define time="${rohplink_time}" \
 				--define excludeNode=[% excludeNode %] \
 				--define jobLab=${jobLab} \
 				--define confFile=[% confFile %] \
 				--define stepDir=${stepDir} \
 				--define input=${pedDir}/gathervcfpreannot/${sample}/${sample}.allchr.g.geno.norm.vcf.gz \
 				--define levelId=${sample} \
-				${ttDir}/${roh_tt} > ${jobCmd}
+				${ttDir}/${rohplink_tt} > ${jobCmd}
 				if [ ! -z "${gathervcfpreannotJobID}" ]; then
-					rohJobID=$(sbatch --dependency=afterok:${gathervcfpreannotJobID} --parsable ${jobCmd})
+					rohplinkJobID=$(sbatch --dependency=afterok:${gathervcfpreannotJobID} --parsable ${jobCmd})
 				else
-					rohJobID=$(sbatch --parsable ${jobCmd})
+					rohplinkJobID=$(sbatch --parsable ${jobCmd})
 				fi
 				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
-				echo -e "${jobCmd}\t${rohJobID}" | tee -a ${jobLog} >&2
+				echo -e "${jobCmd}\t${rohplinkJobID}" | tee -a ${jobLog} >&2
 			else
-				echo "# INFO - roh directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+				echo "# INFO - roh/plink directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
 			fi
 		fi
 			
@@ -761,6 +764,42 @@ while read pedigree; do
 		fi
 		
 		#--------------#
+		# qcpi         #
+		#--------------#
+		if [[ " ${stepuser[*]} " =~ " qcpi " ]]; then
+			echo "# INFO - Submitting qcpi for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/qcpi/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.qcpi"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--define qos=${qcpi_qos} \
+				--define cpu=${qcpi_cpu} \
+				--define mem=${qcpi_mem} \
+				--define time="${qcpi_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${BCAM} \
+				--define levelId=${sample} \
+				--define app="${app}" \
+				${ttDir}/${qcpi_tt} > ${jobCmd}
+				if [ ! -z "${gathervcfpreannotJobID}" ]; then
+                                        qcpiJobID=$(sbatch --dependency=afterok:${gathervcfpreannotJobID} --parsable ${jobCmd})
+                                else
+                                        qcpiJobID=$(sbatch --parsable ${jobCmd})
+                                fi
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${qcpiJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - qcpi directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
+		#--------------#
 		# igvcram      #
 		#--------------#
 		if [[ " ${stepuser[*]} " =~ " igvcram " ]]; then
@@ -893,12 +932,48 @@ while read pedigree; do
 
 	done < <(grep -v "^#" ${pedDir}/${pedigree}_samples_rawdata.tsv)
 	hapcallJobID=$(IFS=: ; echo "${hapcallJobIDs[*]}")
-	
+	gathervcfpreannJobID=$(IFS=: ; echo "${gathervcfpreannJobIDs[*]}")
+
 	################################################
 	# SUBMIT PER PEDIGREE                          #
 	################################################
 	nSampPed=$(grep -v "^#" ${pedDir}/${pedigree}_samples_info.tsv | wc -l)
 	app=$(grep -v "^#" [% analysisId %]_samples_rawdata.tsv | cut -f 3 | sort -u)
+	
+	#--------------#
+	# roh_automap  #
+	#--------------#
+	if [[ " ${stepuser[*]} " =~ " roh " ]]; then
+		echo "# INFO - Submitting roh/automap for pedigree [${pedigree}] ..." >&2
+		stepDir="${pedDir}/roh/automap"
+		if [ ! -d ${stepDir} ]; then
+			mkdir -p ${stepDir}
+			jobLab="${pedigree}.rohautomap"
+			jobCmd="${stepDir}/${jobLab}.cmd"
+			jobLog="${stepDir}/${jobLab}.jobID.log"
+			apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+			--define qos=${rohautomap_qos} \
+			--define cpu=${rohautomap_cpu} \
+			--define mem=${rohautomap_mem} \
+			--define time="${rohautomap_time}" \
+			--define excludeNode=[% excludeNode %] \
+			--define jobLab=${jobLab} \
+			--define confFile=[% confFile %] \
+			--define pedDir=${pedDir} \
+			--define stepDir=${stepDir} \
+			--define levelId=${pedigree} \
+			${ttDir}/${rohautomap_tt} > ${jobCmd}
+			if [ ! -z  "${gathervcfpreannJobID}" ]; then
+				rohautomapJobID=$(sbatch --dependency=afterok:${gathervcfpreannJobID} --parsable ${jobCmd})
+			else
+				rohautomapJobID=$(sbatch --parsable ${jobCmd})
+			fi
+			if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+			echo -e "${jobCmd}\t${rohautomapJobID}" | tee -a ${jobLog} >&2
+		else
+			echo "# INFO - roh/automap directory for pedigree [${pedigree}] already exists, skipping this step" >&2
+		fi
+	fi
 	
 	#--------------#
 	# multshortvar #

@@ -1,0 +1,48 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% anaDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% anaDir %]/[% jobLab %].cmd"
+errLog="[% anaDir %]/ERROR.log"
+
+source [% confFile %]
+
+echo "# INFO - Pipeline configuration" >&2
+echo "[% confFile %]" >&2
+
+echo "# INFO - Running Nextflow ..." >&2
+module purge >&2
+module load Nextflow/25.10.2 >&2
+nextflow run bag-cnag/umipreprocessing \
+-r no_consensus_reads \
+-w [% analysisId %].umipreprocessing_work \
+--outdir [% analysisId %].umipreprocessing \
+-output-dir [% analysisId %].umipreprocessing \
+--fasta ${fasta} \
+--fasta_fai ${fasta}.fai \
+--dict ${fasta%.fasta}.dict \
+--bwa ${bwaIdx} \
+--input [% analysisId %].umipreprocessing_Samplesheet.csv \
+-params-file ${confDir}/${pipeConf%.conf}_nf-params_[% app %].json \
+-c /home/groups/dat/gkesisoglou/bin/cnag.config \
+-ansi-log false
+if [ $? != 0 ]; then echo "ERROR : umipreproc [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

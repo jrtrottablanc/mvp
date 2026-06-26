@@ -1,0 +1,59 @@
+#!/bin/bash
+#SBATCH --exclude=[% excludeNode %]
+#SBATCH --job-name=[% jobLab %]
+#SBATCH --chdir=[% stepDir %]
+#SBATCH --partition=genD
+#SBATCH --requeue
+#SBATCH --output=[% jobLab %]_%j.out 
+#SBATCH --error=[% jobLab %]_%j.err 
+#SBATCH --ntasks=1
+#SBATCH --qos=[% qos %]
+#SBATCH --cpus-per-task=[% cpu %]
+#SBATCH --mem-per-cpu=[% mem %]
+#SBATCH --time=[% time %]
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="[% stepDir %]/[% jobLab %].cmd"
+errLog="[% stepDir %]/ERROR.log"
+
+source [% confFile %]
+source ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf
+
+fastMode=" "
+if [ "[% covType %]" = "raw" ]; then fastMode=" --fast-mode "; fi
+
+dupFilter=" --flag 1024 "
+if [ "[% covType %]" = "raw" ]; then dupFilter=" --flag 0 "; fi
+
+if [ "${roiBed}" != "NA" ]; then
+	apptainer run --bind ${bindDir} ${contDir}/${bedtoolsCont} bedtools intersect \
+	-a ${roiBed} \
+	-b  ${mappaBed} \
+	> mosdepthBy.bed
+	if [ $? != 0 ]; then echo "ERROR : qcpi.mosdepth.[% covType %] [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+else
+	if [[ ${mappaBed} =~ \.gz$ ]]; then
+		zcat ${mappaBed} > mosdepthBy.bed
+	else
+		cat ${mappaBed} > mosdepthBy.bed
+	fi
+fi
+
+apptainer run --bind ${bindDir} ${contDir}/${mosdepthCont} mosdepth \
+--threads 4 \
+--no-per-base \
+--mapq 20 \
+--by mosdepthBy.bed \
+--fasta ${fasta} ${fastMode} ${dupFilter} \
+[% levelId %].mosdepth.[% covType %] \
+[% input %]
+
+if [ $? != 0 ]; then echo "ERROR : qcpi.mosdepth.[% covType %] [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2

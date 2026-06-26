@@ -79,7 +79,6 @@ do
     esac
 done
 
-
 # cmd line parameters check
 echo "# INFO - Checking command line parameters ..."
 
@@ -134,10 +133,23 @@ if [ "${cnagProd}" != "yes" ] && [ "${cnagProd}" != "no" ]; then
 fi
 
 #check_param "${georgia}" "georgia parameter is missing into config file [${uconf}]"
-#if [ "${georgia}" != "yes" ] && [ "${georgia}" != "no" ]; then
-#	echo "ERROR : Unrecognized georgia parameter [${georgia}] into config file [${uconf}]"
-#	exit 1
-#fi
+if [ -z "${georgia}" ]; then
+        georgia="no"
+fi
+if [ "${georgia}" != "yes" ] && [ "${georgia}" != "no" ]; then
+	echo "ERROR : Unrecognized georgia parameter [${georgia}] into config file [${uconf}]"
+	exit 1
+fi
+
+
+#check_param "${umipreprocessing}" "umipreprocessing parameter is missing into config file [${uconf}]"
+if [ -z "${umipreprocessing}" ]; then
+        umipreprocessing="no"
+fi
+if [ "${umipreprocessing}" != "yes" ] && [ "${umipreprocessing}" != "no" ]; then
+	echo "ERROR : Unrecognized umipreprocessing parameter [${umipreprocessing}] into config file [${uconf}]"
+	exit 1
+fi
 
 check_param "${analysisId}" "analysisId parameter is missing into config file [${uconf}]"
 
@@ -149,6 +161,14 @@ fi
 
 check_param "${candidateGenes}" "candidateGenes parameter is missing into config file [${uconf}]"
 check_file "candidateGenes" "${geneDir}/${candidateGenes}"
+
+#check_param "${candidateRegions}" "candidateRegions parameter is missing into config file [${uconf}]"
+if [ -z "${candidateRegions}" ]; then
+	candidateRegions="NA"
+fi
+if [ "${candidateRegions}" != "NA" ]; then
+	check_file "candidateRegions" "${regionDir}/${candidateRegions}"
+fi
 
 check_param "${pipeConf}" "pipeConf parameter is missing into pipeline configuration file [${uconf}]"
 check_file "pipeConf" "${confDir}/${pipeConf}"

@@ -5,15 +5,16 @@
     "Databases"               : {
         "ANNOTSV"             :    "RefSeq",
         "CADD"                :    "1.7",
-        "CIVIC"               :    "MonthlyUpdate",
-        "ClinVar"             :    "MonthlyUpdate",
+        "CIVIC"               :    "CIVICMONTHLY",
+        "ClinVar"             :    "CLINVARMONTHLY",
         "COSMIC"              :    "101",
         "dbNSFP"              :    "4.5",
         "gnomAD"              :    "4.1.0",
         "SnpEff"              :    "GRCh38.mane.1.2.refseq",
         "REVEL"	              :    "1.3",
         "GreenDB"             :    "2.5",
-        "SpliceAI"            :    "1.3_filter0.1"
+        "SpliceAI"            :    "1.3_filter0.1",
+	"MitoMap"             :    "MITOMAPMONTHLY"
     },
     "Programs"                : {
         "Aligner"             : {

@@ -17,8 +17,8 @@ create_temp_file() {
 	local cmd_file="$2"
 	local err_log="$3"
     
-	mv -v "${analysis_id}.allchr.g.geno.norm.ann.tag.vcf.gz" "${analysis_id}.allchr.g.geno.norm.ann.tag.TMP0.vcf.gz"
-	mv -v "${analysis_id}.allchr.g.geno.norm.ann.tag.vcf.gz.tbi" "${analysis_id}.allchr.g.geno.norm.ann.tag.TMP0.vcf.gz.tbi"
+	mv -v "${analysis_id}.allchr.g.geno.norm.ann.tag.vcf.gz" "${analysis_id}.allchr.g.geno.norm.ann.tag.TMP0.vcf.gz" >&2
+	mv -v "${analysis_id}.allchr.g.geno.norm.ann.tag.vcf.gz.tbi" "${analysis_id}.allchr.g.geno.norm.ann.tag.TMP0.vcf.gz.tbi" >&2
 	if [ $? -ne 0 ]; then
 		echo "ERROR : create_temp_file [${cmd_file}]" >> "${err_log}"
 		exit 1

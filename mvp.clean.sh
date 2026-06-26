@@ -105,6 +105,17 @@ read -p "Continue? [y/N]: " -n 1 -r
 	done
 	
 	# remove analysis dir
+	if [ "${umipreprocessing}" = "yes" ]; then
+		echo -n "# INFO - Removing analysis directory for step [umipreprocessing] ..." | tee -a ${cleanLog}
+		rm -rf ${anaDir}/${analysisId}.umipreprocessing_work
+		echo -n "." | tee -a ${cleanLog}
+		rm -rf ${anaDir}/${analysisId}.umipreprocessing/bqsr
+		echo -n "." | tee -a ${cleanLog}
+		rm -rf ${anaDir}/${analysisId}.umipreprocessing/markduplicates
+		echo -n "." | tee -a ${cleanLog}
+		rm -rf ${anaDir}/${analysisId}.umipreprocessing/trimming
+		echo | tee -a ${cleanLog}
+	fi
 	IFS=',' read -r -a stepuser <<< "${step}"
 	for stepitem in "${stepuser[@]}"; do
 		
