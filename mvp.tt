@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% anaDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=production
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -107,6 +108,7 @@ while read pedigree; do
 					jobLog="${stepDir}/${jobLab}.jobID.log"
 					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 					--define qos=${hapcallgenonorm_qos} \
+					--define part=${hapcallgenonorm_part} \
 					--define cpu=${hapcallgenonorm_cpu} \
 					--define mem=${hapcallgenonorm_mem} \
 					--define time="${hapcallgenonorm_time}" \
@@ -145,6 +147,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${gathervcf_qos} \
+				--define part=${gathervcf_part} \
 				--define cpu=${gathervcf_cpu} \
 				--define mem=${gathervcf_mem} \
 				--define time="${gathervcf_time}" \
@@ -184,6 +187,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${singshortvar_qos} \
+				--define part=${singshortvar_part} \
 				--define cpu=${singshortvar_cpu} \
 				--define mem=${singshortvar_mem} \
 				--define time="${singshortvar_time}" \
@@ -221,6 +225,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${mt_qos} \
+				--define part=${mt_part} \
 				--define cpu=${mt_cpu} \
 				--define mem=${mt_mem} \
 				--define time="${mt_time}" \
@@ -252,6 +257,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${rohplink_qos} \
+				--define part=${rohplink_part} \
 				--define cpu=${rohplink_cpu} \
 				--define mem=${rohplink_mem} \
 				--define time="${rohplink_time}" \
@@ -287,6 +293,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${singmanta_qos} \
+				--define part=${singmanta_part} \
 				--define cpu=${singmanta_cpu} \
 				--define mem=${singmanta_mem} \
 				--define time="${singmanta_time}" \
@@ -320,6 +327,7 @@ while read pedigree; do
 					jobLog="${stepDir}/${jobLab}.jobID.log"
 					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 					--define qos=${clinsv_qos} \
+					--define part=${clinsv_part} \
 					--define cpu=${clinsv_cpu} \
 					--define mem=${clinsv_mem} \
 					--define time="${clinsv_time}" \
@@ -356,6 +364,7 @@ while read pedigree; do
 						jobLog="${stepDir}/${windowSize}/${jobLab}.jobID.log"
 						apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 						--define qos=${freecrun_qos} \
+						--define part=${freecrun_part} \
 						--define cpu=${freecrun_cpu} \
 						--define mem=${freecrun_mem} \
 						--define time="${freecrun_time}" \
@@ -385,6 +394,7 @@ while read pedigree; do
 					jobLog="${stepDir}/${windowSize}/${jobLab}.jobID.log"
 					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 					--define qos=${freecrun_qos} \
+					--define part=${freecrun_part} \
 					--define cpu=${freecrun_cpu} \
 					--define mem=${freecrun_mem} \
 					--define time="${freecrun_time}" \
@@ -420,6 +430,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${smafind_qos} \
+				--define part=${smafind_part} \
 				--define cpu=${smafind_cpu} \
 				--define mem=${smafind_mem} \
 				--define time="${smafind_time}" \
@@ -451,6 +462,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${smncall_qos} \
+				--define part=${smncall_part} \
 				--define cpu=${smncall_cpu} \
 				--define mem=${smncall_mem} \
 				--define time="${smncall_time}" \
@@ -482,6 +494,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${cyrius_qos} \
+				--define part=${cyrius_part} \
 				--define cpu=${cyrius_cpu} \
 				--define mem=${cyrius_mem} \
 				--define time="${cyrius_time}" \
@@ -513,6 +526,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${gauchian_qos} \
+				--define part=${gauchian_part} \
 				--define cpu=${gauchian_cpu} \
 				--define mem=${gauchian_mem} \
 				--define time="${gauchian_time}" \
@@ -544,6 +558,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${pypgx_qos} \
+				--define part=${pypgx_part} \
 				--define cpu=${pypgx_cpu} \
 				--define mem=${pypgx_mem} \
 				--define time="${pypgx_time}" \
@@ -576,6 +591,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${stripy_qos} \
+				--define part=${stripy_part} \
 				--define cpu=${stripy_cpu} \
 				--define mem=${stripy_mem} \
 				--define time="${stripy_time}" \
@@ -608,6 +624,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${ehshort_qos} \
+				--define part=${ehshort_part} \
 				--define cpu=${ehshort_cpu} \
 				--define mem=${ehshort_mem} \
 				--define time="${ehshort_time}" \
@@ -641,6 +658,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${ehlong_qos} \
+				--define part=${ehlong_part} \
 				--define cpu=${ehlong_cpu} \
 				--define mem=${ehlong_mem} \
 				--define time="${ehlong_time}" \
@@ -675,6 +693,7 @@ while read pedigree; do
 					jobLog="${stepDir}/${jobLab}.jobID.log"
 					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 					--define qos=${hlahd_qos} \
+					--define part=${hlahd_part} \
 					--define cpu=${hlahd_cpu} \
 					--define mem=${hlahd_mem} \
 					--define time="${hlahd_time}" \
@@ -710,6 +729,7 @@ while read pedigree; do
 					jobLog="${stepDir}/${jobLab}.jobID.log"
 					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 					--define qos=${hlakir_qos} \
+					--define part=${hlakir_part} \
 					--define cpu=${hlakir_cpu} \
 					--define mem=${hlakir_mem} \
 					--define time="${hlakir_time}" \
@@ -744,6 +764,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${mosdepth_qos} \
+				--define part=${mosdepth_part} \
 				--define cpu=${mosdepth_cpu} \
 				--define mem=${mosdepth_mem} \
 				--define time="${mosdepth_time}" \
@@ -776,6 +797,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${qcpi_qos} \
+				--define part=${qcpi_part} \
 				--define cpu=${qcpi_cpu} \
 				--define mem=${qcpi_mem} \
 				--define time="${qcpi_time}" \
@@ -788,10 +810,10 @@ while read pedigree; do
 				--define app="${app}" \
 				${ttDir}/${qcpi_tt} > ${jobCmd}
 				if [ ! -z "${gathervcfpreannotJobID}" ]; then
-                                        qcpiJobID=$(sbatch --dependency=afterok:${gathervcfpreannotJobID} --parsable ${jobCmd})
-                                else
-                                        qcpiJobID=$(sbatch --parsable ${jobCmd})
-                                fi
+					qcpiJobID=$(sbatch --dependency=afterok:${gathervcfpreannotJobID} --parsable ${jobCmd})
+				else
+					qcpiJobID=$(sbatch --parsable ${jobCmd})
+				fi
 				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
 				echo -e "${jobCmd}\t${qcpiJobID}" | tee -a ${jobLog} >&2
 			else
@@ -812,6 +834,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${igvcram_qos} \
+				--define part=${igvcram_part} \
 				--define cpu=${igvcram_cpu} \
 				--define mem=${igvcram_mem} \
 				--define time="${igvcram_time}" \
@@ -846,6 +869,7 @@ while read pedigree; do
 				if [ "${BCAMext}" = "bam" ]; then
 					apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 					--define qos=${bamtocram_qos} \
+					--define part=${bamtocram_part} \
 					--define cpu=${bamtocram_cpu} \
 					--define mem=${bamtocram_mem} \
 					--define time="${bamtocram_time}" \
@@ -867,6 +891,43 @@ while read pedigree; do
 			fi
 		fi
 		
+		#------------------#
+		# matillavep       #
+		#------------------#
+		if [[ " ${stepuser[*]} " =~ " matillavep " ]]; then
+			echo "# INFO - Submitting matillavep for pedigree [${pedigree}] and sample [${sample}] ..." >&2
+			stepDir="${pedDir}/matillavep/${sample}"
+			if [ ! -d ${stepDir} ]; then
+				mkdir -p ${stepDir}
+				jobLab="${sample}.matillavep"
+				jobCmd="${stepDir}/${jobLab}.cmd"
+				jobLog="${stepDir}/${jobLab}.jobID.log"
+				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+				--tag_style=php \
+				--define qos=${matillavep_qos} \
+				--define part=${matillavep_part} \
+				--define cpu=${matillavep_cpu} \
+				--define mem=${matillavep_mem} \
+				--define time="${matillavep_time}" \
+				--define excludeNode=[% excludeNode %] \
+				--define jobLab=${jobLab} \
+				--define confFile=[% confFile %] \
+				--define stepDir=${stepDir} \
+				--define input=${pedDir}/gathervcfpreannot/${sample}/${sample}.allchr.g.geno.norm.vcf.gz \
+				--define levelId=${sample} \
+				${ttDir}/${matillavep_tt} > ${jobCmd}
+				if [ ! -z "${gathervcfpreannotJobID}" ]; then
+					matillavepJobID=$(sbatch --dependency=afterok:${gathervcfpreannotJobID} --parsable ${jobCmd})
+				else
+					matillavepJobID=$(sbatch --parsable ${jobCmd})
+				fi
+				if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
+				echo -e "${jobCmd}\t${matillavepJobID}" | tee -a ${jobLog} >&2
+			else
+				echo "# INFO - matillavep directory for pedigree [${pedigree}] and sample [${sample}] already exists, skipping this step" >&2
+			fi
+		fi
+		
 		#-----------------#
 		# gutierrezsarprs #
 		#-----------------#
@@ -880,6 +941,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${gutierrezsarprs_qos} \
+				--define part=${gutierrezsarprs_part} \
 				--define cpu=${gutierrezsarprs_cpu} \
 				--define mem=${gutierrezsarprs_mem} \
 				--define time="${gutierrezsarprs_time}" \
@@ -912,6 +974,7 @@ while read pedigree; do
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--tag_style=php \
 				--define qos=${tegerpgxgeno_qos} \
+				--define part=${tegerpgxgeno_part} \
 				--define cpu=${tegerpgxgeno_cpu} \
 				--define mem=${tegerpgxgeno_mem} \
 				--define time="${tegerpgxgeno_time}" \
@@ -953,6 +1016,7 @@ while read pedigree; do
 			jobLog="${stepDir}/${jobLab}.jobID.log"
 			apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 			--define qos=${rohautomap_qos} \
+			--define part=${rohautomap_part} \
 			--define cpu=${rohautomap_cpu} \
 			--define mem=${rohautomap_mem} \
 			--define time="${rohautomap_time}" \
@@ -989,6 +1053,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${multshortvar_qos} \
+				--define part=${multshortvar_part} \
 				--define cpu=${multshortvar_cpu} \
 				--define mem=${multshortvar_mem} \
 				--define time="${multshortvar_time}" \
@@ -1029,6 +1094,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${multmanta_qos} \
+				--define part=${multmanta_part} \
 				--define cpu=${multmanta_cpu} \
 				--define mem=${multmanta_mem} \
 				--define time="${multmanta_time}" \
@@ -1069,6 +1135,7 @@ while read pedigree; do
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${somalier_qos} \
+				--define part=${somalier_part} \
 				--define cpu=${somalier_cpu} \
 				--define mem=${somalier_mem} \
 				--define time="${somalier_time}" \
@@ -1113,6 +1180,7 @@ if [[ " ${stepuser[*]} " =~ " allshortvar " ]]; then
 			jobLog="${stepDir}/${jobLab}.jobID.log"
 			apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 			--define qos=${allshortvar_qos} \
+			--define part=${allshortvar_part} \
 			--define cpu=${allshortvar_cpu} \
 			--define mem=${allshortvar_mem} \
 			--define time="${allshortvar_time}" \
@@ -1152,6 +1220,7 @@ if [[ " ${stepuser[*]} " =~ " somalier " ]]; then
 			jobLog="${stepDir}/${jobLab}.jobID.log"
 			apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 			--define qos=${somalier_qos} \
+			--define part=${somalier_part} \
 			--define cpu=${somalier_cpu} \
 			--define mem=${somalier_mem} \
 			--define time="${somalier_time}" \
@@ -1189,6 +1258,7 @@ if [[ " ${stepuser[*]} " =~ " exdepth " ]]; then
 				jobLog="${stepDir}/${jobLab}.jobID.log"
 				apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 				--define qos=${exdepth_qos} \
+				--define part=${exdepth_part} \
 				--define cpu=${exdepth_cpu} \
 				--define mem=${exdepth_mem} \
 				--define time="${exdepth_time}" \

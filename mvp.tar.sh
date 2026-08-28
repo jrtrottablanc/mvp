@@ -8,7 +8,7 @@ touch ${cleanLog}
 	jobCmd="${realWdir}/${jobLab}.cmd"
 	jobLog="${realWdir}/${jobLab}.jobID.log"
 	echo "# INFO - Submitting mvp tar ..." | tee -a ${tarLog}
-	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+	/software/Perl-bundle-CPAN/5.40.2-GCCcore-14.3.0/bin/tpage \
 	--define qos=marathon \
 	--define cpu=1 \
 	--define mem=8000 \

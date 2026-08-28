@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -29,6 +30,7 @@ while read pedigree sample app sex BCAM GVCF VCF; do
 	jobLog="[% stepDir %]/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${somext_qos} \
+	--define part=${somext_part} \
 	--define cpu=${somext_cpu} \
 	--define mem=${somext_mem} \
 	--define time="${somext_time}" \
@@ -51,6 +53,7 @@ jobCmd="[% stepDir %]/${jobLab}.cmd"
 jobLog="[% stepDir %]/${jobLab}.jobID.log"
 apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${somrel_qos} \
+--define part=${somrel_part} \
 --define cpu=${somrel_cpu} \
 --define mem=${somrel_mem} \
 --define time="${somrel_time}" \

@@ -1,0 +1,81 @@
+#!/bin/bash
+#SBATCH --account=sa_vcaa
+#SBATCH --exclude=<? excludeNode ?>
+#SBATCH --job-name=<? jobLab ?>
+#SBATCH --chdir=<? stepDir ?>
+#SBATCH --partition=<? part ?>
+#SBATCH --requeue
+#SBATCH --output=<? jobLab ?>_%j.out
+#SBATCH --error=<? jobLab ?>_%j.err
+#SBATCH --ntasks=1
+#SBATCH --qos=<? qos ?>
+#SBATCH --cpus-per-task=<? cpu ?>
+#SBATCH --mem-per-cpu=<? mem ?>
+#SBATCH --time=<? time ?>
+
+hostname >&2
+printf START >&2; uptime >&2
+date >&2
+
+export LC_ALL=C
+
+cmdFile="<? stepDir ?>/<? jobLab ?>.cmd"
+errLog="<? stepDir ?>/ERROR.log"
+
+source <? confFile ?>
+
+# VEP
+echo "# INFO - Running VEP ..." >&2
+apptainer exec --bind ${bindDir} ${contDir}/${vepCont} vep \
+--format vcf \
+--vcf \
+--vcf_info_field ANN \
+--everything \
+--check_existing \
+--individual all \
+--plugin Condel,/scratch_isilon/groups/dat/jrtrotta/MATILLA/plugin,b,2 \
+--dir_plugins /scratch_isilon/groups/dat/jrtrotta/MATILLA/plugin \
+--no_stats \
+--offline \
+--dir_cache /scratch_isilon/groups/dat/jrtrotta/MATILLA/vep_data \
+--assembly GRCh38 \
+--fasta /scratch_isilon/groups/dat/data/Organisms/Homo_sapiens/GRCh38.hl/fasta/hsapiens.GRCh38.hl.fasta \
+-o STDOUT \
+-i <? input ?> | \
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} bgzip -c > <? levelId ?>.allchr.g.geno.norm.VEP.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : matillavep [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF indexes
+echo "# INFO - Creating VCF indexes ..." >&2
+apptainer run --no-home --bind ${bindDir} ${contDir}/${htslibCont} tabix -p vcf <? levelId ?>.allchr.g.geno.norm.VEP.vcf.gz
+if [ $? != 0 ]; then echo "ERROR : matillavep [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# VCF integrity
+echo "# INFO - Checking VCF integrity ..." >&2
+/scratch_isilon/groups/dat/apps/VCF1LINERS/vcfCheck_sing.sh -i <? levelId ?>.allchr.g.geno.norm.VEP.vcf.gz >&2
+if [ $? != 0 ]; then echo "ERROR : matillavep [step#3] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+# TSV
+echo "# INFO - Generating tsv header ..." >&2
+echo -e "CHR\tPOS\tREF\tALT\tDEPTH\tALT_DEPTH\tAllele\tConsequence\tIMPACT\tSYMBOL\tGene\tFeature_type\tFeature\tBIOTYPE\tEXON\tINTRON\tHGVSc\tHGVSp\tcDNA_position\tCDS_position\tProtein_position\tAmino_acids\tCodons\tExisting_variation\tIND\tZYG\tDISTANCE\tSTRAND\tFLAGS\tVARIANT_CLASS\tSYMBOL_SOURCE\tHGNC_ID\tCANONICAL\tMANE_SELECT\tMANE_PLUS_CLINICAL\tTSL\tAPPRIS\tCCDS\tENSP\tSWISSPROT\tTREMBL\tUNIPARC\tUNIPROT_ISOFORM\tGENE_PHENO\tSIFT\tPolyPhen\tDOMAINS\tmiRNA\tHGVS_OFFSET\tAF\tAFR_AF\tAMR_AF\tEAS_AF\tEUR_AF\tSAS_AF\tgnomADe_AF\tgnomADe_AFR_AF\tgnomADe_AMR_AF\tgnomADe_ASJ_AF\tgnomADe_EAS_AF\tgnomADe_FIN_AF\tgnomADe_NFE_AF\tgnomADe_OTH_AF\tgnomADe_SAS_AF\tgnomADg_AF\tgnomADg_AFR_AF\tgnomADg_AMI_AF\tgnomADg_AMR_AF\tgnomADg_ASJ_AF\tgnomADg_EAS_AF\tgnomADg_FIN_AF\tgnomADg_MID_AF\tgnomADg_NFE_AF\tgnomADg_OTH_AF\tgnomADg_SAS_AF\tMAX_AF\tMAX_AF_POPS\tCLIN_SIG\tSOMATIC\tPHENO\tPUBMED\tMOTIF_NAME\tMOTIF_POS\tHIGH_INF_POS\tMOTIF_SCORE_CHANGE\tTRANSCRIPTION_FACTORS\tCondel" \
+> <? levelId ?>.allchr.g.geno.norm.VEP.tsv
+
+echo "# INFO - Generating tsv content ..." >&2
+while read chr pos ref alt dp ad ann; do \
+IFS=',' read -r -a adAll <<< "$ad"; \
+IFS=',' read -r -a annAll <<< "$ann"; \
+for annUniq in "${annAll[@]}"; do \
+echo -ne "$chr\t$pos\t$ref\t$alt\t$dp\t${adAll[1]}"; \
+IFS='|' read -r -a annItem <<< "$annUniq"; \
+for element in "${annItem[@]}"; do \
+echo -ne "\t$element"; \
+done; \
+echo; \
+done; \
+done < <(apptainer exec --no-home --bind ${bindDir} ${contDir}/${bcftoolsCont} bcftools query -f "%CHROM\t%POS\t%REF\t%ALT\t[%DP]\t[%AD]\t%INFO/ANN\n" <? levelId ?>.allchr.g.geno.norm.VEP.vcf.gz) >> <? levelId ?>.allchr.g.geno.norm.VEP.tsv
+if [ $? != 0 ]; then echo "ERROR : matillavep [step#4] [${cmdFile}]" >> ${errLog}; exit 1; fi
+
+printf END >&2; uptime >&2
+date >&2
+
+

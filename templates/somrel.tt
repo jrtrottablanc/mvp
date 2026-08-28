@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -34,11 +35,9 @@ if [ $? != 0 ]; then echo "ERROR : somrel [step#1] [${cmdFile}]" >> ${errLog}; e
 
 # relatedness
 echo "# INFO - Computing relatedness ..." >&2
-module purge >&2
-module load Python/3.9.6-GCCcore-11.2.0 >&2
-export R_LIBS_USER=/scratch_isilon/groups/dat/lib/R/4.2 >&2
-module load R/4.2.0-foss-2021b >&2
-module load R-bundle-Bioconductor/3.15-foss-2021b-R-4.2.0 >&2
+apptainer exec --no-home --bind ${bindDir} \
+--env "R_LIBS_USER=/scratch_isilon/groups/dat/lib/R/4.2" \
+${contDir}/${rbioconductorCont} \
 Rscript \
 /scratch_isilon/groups/dat/apps/RELATEDNESSTOOLS/1.0/RelatednessHeatmapSomalier.R \
 [% stepDir %]/ \

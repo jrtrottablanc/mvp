@@ -6,10 +6,10 @@ touch ${qcLog}
 	
 	# LIMS link
 	echo "# INFO - Generating LIMS QC link ..." | tee -a ${qcLog}
-	limsSubproj=$(${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
+	limsSubproj=$(${funcDir}/limsq -nh -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
 	if [ "${limsSubproj}" != "" ]; then
 		mysqlOpt=" -h lims.internal.cnag.eu -u lims_ro -p4eCrrEG8 -D lims -B --column-names=0 -e "
-		subprojID=$(mysql ${mysqlOpt} "SELECT id FROM sequencing_subproject WHERE subproject_name = '${analysisId}'")
+		subprojID=$(mariadb ${mysqlOpt} "SELECT id FROM sequencing_subproject WHERE subproject_name = '${analysisId}'")
 		echo "https://lims.cnag.cat/lims/subproject_sample_details/${subprojID}/" | tee -a ${qcLog}
 	else
 		echo "# INFO - analysisId [${analysisId}] does not correspond to any LIMS subproject, LIMS QC link is not available" | tee -a ${qcLog}
@@ -49,7 +49,7 @@ touch ${qcLog}
 		colSex='NA'
 		pcrSex='NA'
 		covSex='NA'
-		limsSubproj=$(${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
+		limsSubproj=$(${funcDir}/limsq -nh -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
 		if [ "${limsSubproj}" != "" ]; then
 			while read sp bc colStr pcrStr covStr; do
 				colSex=${colStr}

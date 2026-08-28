@@ -1,6 +1,6 @@
 {
     "Pipeline"                : {
-        "MVP"                 :    "20260109"
+        "MVP"                 :    "20260801"
     },
     "Databases"               : {
         "ANNOTSV"             :    "RefSeq",
@@ -23,7 +23,7 @@
         "CNV"                 : {
             "AnnotSV"         :    "3.4.4",
             "ClinSV"          :    "1.0",
-            "Control-FREEC"   :    "11.5",
+            "Control-FREEC"   :    "11.6b",
             "ExomeDepth"      :    "1.1.17",
             "Manta"           :    "1.6.0"
         },

@@ -1,8 +1,9 @@
-#! /usr/bin/env perl
+#!/software/Perl/5.40.2-GCCcore-14.3.0/bin/perl
 use strict;
 use warnings;
 use Template qw( );
 use experimental 'smartmatch';
+no warnings 'deprecated';
 use Carp;
 use Cwd;
 use Getopt::Long;

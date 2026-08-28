@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -27,6 +28,7 @@ echo "# INFO - Defining main variables ..." >&2
 
 javaMem=$(echo $(([% cpu %]*[% mem %]/1000)))
 echo "javaMem: ${javaMem}" >&2
+export JAVA_TOOL_OPTIONS="-Xmx${javaMem}g"
 initial_chrM_name="${mtChr}"
 echo "initial_chrM_name: ${mtChr}" >&2
 sample_name="[% levelId %]"

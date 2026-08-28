@@ -1,8 +1,4 @@
 [general]
-
-samtools = /software/crgadm/software/SAMtools/1.15-GCC-11.2.0/bin/samtools
-bedtools = /software/crgadm/software/BEDTools/2.30.0-GCC-11.2.0/bin/bedtools
-
 SambambaThreads = 2
 
 chrLenFile = [% freecChrLen %]

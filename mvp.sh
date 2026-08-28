@@ -1,5 +1,6 @@
 #!/bin/bash
-pipeVer='20260109'
+pipeVer='20260801'
+export PERL5LIB=/software/Perl-bundle-CPAN/5.40.2-GCCcore-14.3.0/lib/perl5/site_perl/5.40.2
 source /scratch_isilon/groups/dat/apps/MVPGermline/${pipeVer}/conf/path.conf
 source ${funcDir}/check.sh
 source ${funcDir}/candidateGenes.sh
@@ -230,7 +231,7 @@ dateResults=$(date +"%Y%m%d")
 
 # other configuration
 source ${confDir}/containers.conf
-excludeNode=$(cat /home/groups/dat/jrtrotta/excludeNode.txt)
+excludeNode=$(cat /home/jrtrotta/excludeNode.txt)
 
 # get task sub
 case "${task}" in

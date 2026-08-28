@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -16,8 +17,8 @@ hostname >&2
 printf START >&2; uptime >&2
 date >&2
 
-module purge
-module load Perl/5.34.1-GCCcore-11.3.0
+module purge >&2
+module load Perl-bundle-CPAN/5.40.2-GCCcore-14.3.0 >&2
 export LC_ALL=C
 
 cmdFile="[% stepDir %]/[% jobLab %].cmd"

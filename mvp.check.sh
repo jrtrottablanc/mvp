@@ -85,7 +85,7 @@ touch ${checkLog}
 						nspedmanta)
                             [ "$nSampPed" -gt 1 ] && [ "$nSampPed" -le 5 ] && check_missing "$stepFile" ;;
 						prod)
-							limsSubproj=$($funcDir/limsq_nhopt -nH -sp "$analysisId" -lanepf fail,waiting,under_review | cut -d ";" -f2 | sort -u)
+							limsSubproj=$($funcDir/limsq -nh -sp "$analysisId" -lanepf fail,waiting,under_review | cut -d ";" -f2 | sort -u)
 							[ -n "$limsSubproj" ] && check_missing $stepFile ;;
 						nvarssxls)
 							check_cntvar "${stepFile%.full.xlsx}.cntvar" "$stepFile" 1000000 le ;;

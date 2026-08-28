@@ -13,7 +13,7 @@
 			jobLog="${stepDir}/${jobLab}.jobID.log"
 			errLog="${stepDir}/ERROR.log"
 			mkdir -p ${stepDir}
-			apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
+			/software/Perl-bundle-CPAN/5.40.2-GCCcore-14.3.0/bin/tpage \
 			--define qos=short \
 			--define cpu=1 \
 			--define mem=10000 \

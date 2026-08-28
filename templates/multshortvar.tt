@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -38,6 +39,7 @@ for chr in ${chrList}; do
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${combgvcf_qos} \
+	--define part=${combgvcf_part} \
 	--define cpu=${combgvcf_cpu} \
 	--define mem=${combgvcf_mem} \
 	--define time="${combgvcf_time}" \
@@ -64,6 +66,7 @@ for chr in ${chrList}; do
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${genogvcf_qos} \
+	--define part=${genogvcf_part} \
 	--define cpu=${genogvcf_cpu} \
 	--define mem=${genogvcf_mem} \
 	--define time="${genogvcf_time}" \
@@ -89,6 +92,7 @@ for chr in ${chrList}; do
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${bcfnorm_qos} \
+	--define part=${bcfnorm_part} \
 	--define cpu=${bcfnorm_cpu} \
 	--define mem=${bcfnorm_mem} \
 	--define time="${bcfnorm_time}" \
@@ -114,6 +118,7 @@ for chr in ${chrList}; do
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${annotshortvar_qos} \
+	--define part=${annotshortvar_part} \
 	--define cpu=${annotshortvar_cpu} \
 	--define mem=${annotshortvar_mem} \
 	--define time="${annotshortvar_time}" \
@@ -143,6 +148,7 @@ jobCmd="${stepDir}/${jobLab}.cmd"
 jobLog="${stepDir}/${jobLab}.jobID.log"
 apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${gathervcf_qos} \
+--define part=${gathervcf_part} \
 --define cpu=${gathervcf_cpu} \
 --define mem=${gathervcf_mem} \
 --define time="${gathervcf_time}" \
@@ -170,6 +176,7 @@ jobCmd="${stepDir}/${jobLab}.cmd"
 jobLog="${stepDir}/${jobLab}.jobID.log"
 apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${tagfilt_qos} \
+--define part=${tagfilt_part} \
 --define cpu=${tagfilt_cpu} \
 --define mem=${tagfilt_mem} \
 --define time="${tagfilt_time}" \
@@ -189,7 +196,6 @@ echo -e "${jobCmd}\t$tagfiltJobID" | tee -a ${jobLog} >&2
 #---------------#
 # hardfilt      #
 #---------------#
-
 
 
 

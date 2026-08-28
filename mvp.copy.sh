@@ -23,7 +23,6 @@ touch ${copyLog}
 	done < ${geneDir}/${candidateGenes}
 	
 	# documentation
-	mysqlOpt=" -h lims.internal.cnag.eu -u lims_ro -p4eCrrEG8 -D lims -B --column-names=0 -e "
 	app=$(grep -v "^#" ${anaDir}/${analysisId}_samples_info.tsv | cut -f 7 | sort -u)
 	mvpdoc="${pipeDir}/CNAG_MVP_pipeline_GRCh38_v5_WGS.pdf"
 	if [ "$app" = "WGS" ]; then cp ${mvpdoc} ${resDir}/.; fi
@@ -107,7 +106,7 @@ touch ${copyLog}
 								cp "$stepLog" "$stepDest/expectedNA.log"
 							fi ;;
 						prod)
-							limsSubproj=$($funcDir/limsq_nhopt -nH -sp "$analysisId" -lanepf fail,waiting,under_review | cut -d ";" -f2 | sort -u)
+							limsSubproj=$($funcDir/limsq -nh -sp "$analysisId" -lanepf fail,waiting,under_review | cut -d ";" -f2 | sort -u)
 							if [ -n "$limsSubproj" ]; then
 								copy_or_log $stepFile "$stepDest" "$stepFileName"
 							elif [ "$stepLog" != "nan" ]; then

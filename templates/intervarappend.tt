@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -30,10 +31,14 @@ cp -v [% inputVcf %].tbi [% levelId %].allchr.g.geno.norm.ann.TMP.vcf.gz.tbi >&2
 
 # append intervar
 echo "# INFO - Appending intervar ..." >&2
-module purge >&2
-module load Python/3.9.6-GCCcore-11.2.0 >&2
-module load SciPy-bundle/2021.10-foss-2021b >&2
-source /scratch_isilon/groups/dat/apps/INTERVARTOOLS/intervartools_venv/bin/activate >&2
+#module purge >&2
+#module load Python/3.9.6-GCCcore-11.2.0 >&2
+#module load SciPy-bundle/2021.10-foss-2021b >&2
+#source /scratch_isilon/groups/dat/apps/INTERVARTOOLS/intervartools_venv/bin/activate >&2
+apptainer exec --no-home --bind ${bindDir} \
+--env PYTHONUSERBASE=/scratch_isilon/groups/dat/lib/Python/ \
+${contDir}/${pythonscipyCont} \
+python3 \
 /scratch_isilon/groups/dat/apps/INTERVARTOOLS/appendintervar.py \
 -I [% inputAnno %] \
 -i [% levelId %].allchr.g.geno.norm.ann.TMP.vcf.gz \

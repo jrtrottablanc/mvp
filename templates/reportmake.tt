@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -41,9 +42,9 @@ echo "# INFO - mvpConfig = ${mvpConfig}" >&2
 # reportmake
 echo "# INFO - Making report ..." >&2
 module purge >&2
-module use /software/dat/modules/all >&2
-module load ReportMake/1.0.3 >&2
-Report-Make \
+export PERL5LIB="$HOME/perl5/lib/perl5:$PERL5LIB"
+module load texlive/20230313-GCC-14.3.0
+/scratch_isilon/groups/dat/apps/REPORTMAKE/1.0.3/bin/Report-Make \
 -v [% inputVCF %] \
 -p ${analysisId} \
 -f ${sampleName}_[% levelId %] \

@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -52,9 +53,9 @@ rm -v [% levelId %].hlatmp* >&2
 echo "# INFO - Running HLA-HD ..." >&2
 module purge >&2
 module use /software/dat/modules/all/ >&2
-module load SAMtools/1.15-GCC-11.2.0 >&2
-module load Java/11.0.2 >&2
-module load BEDTools/2.30.0-GCC-11.2.0 >&2
+module load SAMtools/1.22.1-GCC-14.3.0 >&2
+module load Java/17.0.15 >&2
+module load BEDTools/2.31.1-GCC-14.3.0 >&2
 module load Bowtie2/2.4.4-GCC-11.2.0 >&2
 export PATH=$PATH:/scratch_isilon/groups/dat/apps/HLA-HD/1.7.0/hlahd.1.7.0/bin/
 mkdir -pv output

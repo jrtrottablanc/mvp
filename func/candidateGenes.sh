@@ -33,9 +33,8 @@ tag_variants_in_candidate_genes() {
 	local err_log="$5"
     
 	module purge >&2
-	module load Perl/5.34.1-GCCcore-11.3.0 >&2
-	module load HTSlib/1.15.1-GCC-11.2.0 >&2
-    
+	module load Perl/5.40.2-GCCcore-14.3.0 >&2
+	module load HTSlib/1.22.1-GCC-14.3.0 >&2
 	local i=0
 	local j=1
 	while read -r input tag; do
@@ -66,14 +65,9 @@ tag_annotsv_in_candidate_genes() {
 	local candidate_genes="$4"
 	local cmd_file="$5"
 	local err_log="$6"
-    
-	module purge >&2
-	module load Python/3.9.6-GCCcore-11.2.0 >&2
-	module load SciPy-bundle/2021.10-foss-2021b >&2
-	source /scratch_isilon/groups/dat/apps/ANNOTSVTOOLS/annotsvtools_venv/bin/activate >&2
-    
-    local j=1
+	local j=1
 	while read input tag; do \
+		apptainer exec --no-home --bind /scratch_isilon,/shared /scratch_isilon/groups/dat/apps/MVPGermline/20260801/containers/python_scipy_3.13.14.sif python3 \
 		/scratch_isilon/groups/dat/apps/ANNOTSVTOOLS/tagVariantsInCandidateGenesAnnotSV \
 		-I "${analysis_id}.${prog_id}.annot.tag.tsv" \
 		-c "${gene_dir}/$input" \

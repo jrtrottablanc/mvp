@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %] 
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -27,9 +28,9 @@ source ${funcDir}/candidateGenes.sh
 # Input BAM/CRAM
 BCAMs=$(for BCAM in $(grep -v "^#" [% pedDir %]/[% levelId %]_samples_rawdata.tsv | cut -f 5); do echo $BCAM; done | awk '{print "--bam "$0" "}')
 
-module purge >&2
-module use /software/dat/modules/all >&2
-module load manta/1.6.0-GCC-10.2.0-Python-2.7.18 >&2
+#module purge >&2
+#module use /software/dat/modules/all >&2
+#module load manta/1.6.0-GCC-10.2.0-Python-2.7.18 >&2
 
 # conf manta
 echo "# INFO - Configuring manta ..." >&2
@@ -38,7 +39,7 @@ if [ "[% app %]" = "WGS" ]; then
 else
         exomeFlag="--exome"
 fi
-configManta.py ${exomeFlag} \
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${mantaCont} configManta.py ${exomeFlag} \
 --referenceFasta ${fasta} \
 --callRegions ${mantaCallBed} \
 --runDir [% stepDir %] \
@@ -47,6 +48,7 @@ if [ $? != 0 ]; then echo "ERROR : multmanta [step#1] [${cmdFile}]" >> ${errLog}
 
 # run manta
 echo "# INFO - Running manta ..." >&2
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${mantaCont} \
 python [% stepDir %]/runWorkflow.py -m local -j [% cpu %]
 if [ $? != 0 ]; then echo "ERROR : multmanta [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
 

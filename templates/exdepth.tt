@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -23,10 +24,7 @@ errLog="[% stepDir %]/ERROR.log"
 
 source [% confFile %]
 
-#~ source ${confDir}/ressources_ROI.conf
-
 source ${confDir}/${pipeConf%.conf}_ROI_[% app %].conf
-
 
 if [ "${exdepthPath}" = "NA" ]; then
         echo "# INFO - Baseline path is not available, skipping exdepth for sample [[% levelId %]]" | tee -a [% stepDir %]/exdepth.log >&2
@@ -46,6 +44,7 @@ else
 		jobLog="[% stepDir %]/${jobLab}.jobID.log"
 		apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 		--define qos=${exdepthprep_qos} \
+		--define part=${exdepthprep_part} \
 		--define cpu=${exdepthprep_cpu} \
 		--define mem=${exdepthprep_mem} \
 		--define time="${exdepthprep_time}" \
@@ -72,6 +71,7 @@ else
 	jobLog="[% stepDir %]/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${exdepthlink_qos} \
+	--define part=${exdepthlink_part} \
 	--define cpu=${exdepthlink_cpu} \
 	--define mem=${exdepthlink_mem} \
 	--define time="${exdepthlink_time}" \
@@ -94,6 +94,7 @@ else
 		jobLog="[% stepDir %]/${jobLab}.jobID.log"
 		apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 		--define qos=${exdepthrun_qos} \
+		--define part=${exdepthrun_part} \
 		--define cpu=${exdepthrun_cpu} \
 		--define mem=${exdepthrun_mem} \
 		--define time="${exdepthrun_time}" \

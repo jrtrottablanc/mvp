@@ -29,22 +29,22 @@
 	fi
 	echo "# INFO - Creating analysis sample sheet [${anaDir}/${analysisId}_samples_info.tsv] ..." | tee -a ${launchLog}
 	if [ "${cnagProd}" = "yes" ]; then	
-		limsSubproj=$(${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
+		limsSubproj=$(${funcDir}/limsq -nh -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
 		if [ "${limsSubproj}" = "" ]; then
 			echo "ERROR : cnagProd 'yes' but unrecognized LIMS subproject [${analysisId}]"
 			exit 1
 		else
 			echo -e "#pedigree\tbarcode\tsampleName\tsex\tsampleStatus\tsubproject\tapp\tmotherId\tfatherId\tbamcram\tgvcf\tvcf" > ${analysisId}_samples_info.head.tsv
 			if [ "${umipreprocessing}" = "yes" ]; then
-				${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | \
+				${funcDir}/limsq -nh -sp ${analysisId} -lanepf fail,waiting,under_review | \
 				awk -F";" -v ANADIR=${anaDir} -v ANAID=${analysisId} '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,ANADIR"/"ANAID".umipreprocessing/bqsr/"$5"/"$5"_apply_bqsr.bam","NA","NA"}' OFS="\t" | \
 				sort -u > ${analysisId}_samples_info.limsq.tsv
 			elif [ "${georgia}" = "yes" ]; then
-				${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | \
+				${funcDir}/limsq -nh -sp ${analysisId} -lanepf fail,waiting,under_review | \
 				awk -F";" '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,"/scratch_isilon/groups/dat/gkesisoglou/analysis/kapaconsensus_no_consensus/"$2"/results/bqsr/"$5"/"$5"_apply_bqsr.bam","NA","NA"}' OFS="\t" | \
 				sort -u > ${analysisId}_samples_info.limsq.tsv
 			else
-				${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | \
+				${funcDir}/limsq -nh -sp ${analysisId} -lanepf fail,waiting,under_review | \
 				awk -F";" '{if($15=="WG-Seq"){APP="WGS"}else{APP=$16};gsub(/ /,"_",APP); if($19=="None"||$19==""){PEDID=$5}else{PEDID=$19}; if($28=="Affected"){PHENO="2"}else if($28=="Unaffected"){PHENO="1"}else{PHENO="-9"}; if($24=="None"){MOTHER="-9"}else{MOTHER=$24};if($25=="None"){FATHER="-9"}else{FATHER=$25};print PEDID,$5,$4,PHENO,$2,APP,MOTHER,FATHER,"/scratch_isilon/groups/pbt/jcamps/mappings/samples/"$1"/"$2"/"$5"/"$5".bqsr.bam","/scratch_isilon/groups/pbt/jcamps/mappings/samples/"$1"/"$2"/"$5"/"$5".bqsr.bam.CHRNAME.g.vcf.gz","NA"}' OFS="\t" | \
 				sort -u > ${analysisId}_samples_info.limsq.tsv
 			fi
@@ -258,11 +258,12 @@
 	# bam check         #
 	#-------------------#
 	echo "# INFO - Checking files integrity ..." | tee -a ${launchLog}
+	module load SAMtools/1.22.1-GCC-14.3.0
 	while read pedigree sample app sex BCAM GVCF VCF; do
 		# bamcram
 		if [ "${BCAM}" != "NA" ] && [ "${umipreprocessing}" = "no" ]; then
 			echo -ne "${BCAM} ... " | tee -a ${launchLog}
-			apptainer run --no-home --bind ${bindDir} ${contDir}/${samtoolsCont} samtools quickcheck -v ${BCAM}
+			samtools quickcheck -v ${BCAM}
 			if [ $? != 0 ]; then echo -e "FAILED"; exit 1; fi | tee -a ${launchLog}
 			echo "OK!" | tee -a ${launchLog}
 		fi		
@@ -271,20 +272,21 @@
 	#-------------------#
 	# report sheet      #
 	#-------------------#
-	limsSubproj=$(${funcDir}/limsq_nhopt -nH -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
+	limsSubproj=$(${funcDir}/limsq -nh -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
 	if [ "${limsSubproj}" != "" ]; then
 		echo "# INFO - Generating sample sheet for production report ..." | tee -a ${launchLog}
+		module load MariaDB/11.8.3-GCC-14.3.0
 		while read pedigree sample app sex BCAM GVCF VCF; do
 			if [ ! -f ${anaDir}/${pedigree}/rawdata/${sample}/${sample}.reportSheet.conf ]; then
-				mysqlOpt=" -h lims.internal.cnag.eu -u lims_ro -p4eCrrEG8 -D lims -B --column-names=0 -e "
-				sampleName=$(mysql ${mysqlOpt} "SELECT name FROM sequencing_sample WHERE barcode = '${sample}'")
-				RstartDate=$(mysql ${mysqlOpt} "SELECT DATE_FORMAT(data_transfer_ready_date,\"%d/%m/%Y\") FROM sequencing_subproject WHERE sequencing_subproject.subproject_name = '${analysisId}'")
-				RpiEmail=$(mysql ${mysqlOpt} "SELECT sequencing_contact.email FROM sequencing_contact JOIN sequencing_subprojectcontactslist ON sequencing_subprojectcontactslist.contact_id = sequencing_contact.id JOIN sequencing_subproject ON sequencing_subproject.id = sequencing_subprojectcontactslist.subproject_id WHERE sequencing_subproject.subproject_name = '${analysisId}' AND sequencing_subprojectcontactslist.pi = 1 LIMIT 0,1")
-				RpiName=$(mysql ${mysqlOpt} "SELECT sequencing_contact.first_name, sequencing_contact.last_name FROM sequencing_contact JOIN sequencing_subprojectcontactslist ON sequencing_subprojectcontactslist.contact_id = sequencing_contact.id JOIN sequencing_subproject ON sequencing_subproject.id = sequencing_subprojectcontactslist.subproject_id WHERE sequencing_subproject.subproject_name = '${analysisId}' AND sequencing_subprojectcontactslist.pi = 1 LIMIT 0,1")
-				limsEnac=$(mysql ${mysqlOpt} "SELECT enac_accredited FROM sequencing_sop JOIN sequencing_library ON sequencing_library.sop_id = sequencing_sop.id JOIN sequencing_librarysubproject ON sequencing_librarysubproject.library_id = sequencing_library.id JOIN sequencing_subproject ON sequencing_subproject.id = sequencing_librarysubproject.subproject_id WHERE sequencing_subproject.subproject_name = '${analysisId}' LIMIT 0,1")
+				mysqlOpt=" --ssl=0 -h lims.internal.cnag.eu -u lims_ro -p4eCrrEG8 -D lims -B --column-names=0 -e "
+				sampleName=$(mariadb ${mysqlOpt} "SELECT name FROM sequencing_sample WHERE barcode = '${sample}'")
+				RstartDate=$(mariadb ${mysqlOpt} "SELECT DATE_FORMAT(data_transfer_ready_date,\"%d/%m/%Y\") FROM sequencing_subproject WHERE sequencing_subproject.subproject_name = '${analysisId}'")
+				RpiEmail=$(mariadb ${mysqlOpt} "SELECT sequencing_contact.email FROM sequencing_contact JOIN sequencing_subprojectcontactslist ON sequencing_subprojectcontactslist.contact_id = sequencing_contact.id JOIN sequencing_subproject ON sequencing_subproject.id = sequencing_subprojectcontactslist.subproject_id WHERE sequencing_subproject.subproject_name = '${analysisId}' AND sequencing_subprojectcontactslist.pi = 1 LIMIT 0,1")
+				RpiName=$(mariadb ${mysqlOpt} "SELECT sequencing_contact.first_name, sequencing_contact.last_name FROM sequencing_contact JOIN sequencing_subprojectcontactslist ON sequencing_subprojectcontactslist.contact_id = sequencing_contact.id JOIN sequencing_subproject ON sequencing_subproject.id = sequencing_subprojectcontactslist.subproject_id WHERE sequencing_subproject.subproject_name = '${analysisId}' AND sequencing_subprojectcontactslist.pi = 1 LIMIT 0,1")
+				limsEnac=$(mariadb ${mysqlOpt} "SELECT enac_accredited FROM sequencing_sop JOIN sequencing_library ON sequencing_library.sop_id = sequencing_sop.id JOIN sequencing_librarysubproject ON sequencing_librarysubproject.library_id = sequencing_library.id JOIN sequencing_subproject ON sequencing_subproject.id = sequencing_librarysubproject.subproject_id WHERE sequencing_subproject.subproject_name = '${analysisId}' LIMIT 0,1")
 				if [ "$limsEnac" = "1" ]; then RisEnac='T'; else RisEnac='F'; fi
 				if [ "${app}" = "WGS" ]; then RappReport="wgs" ; else RappReport="exome" ; fi
-				RappStats=$(mysql ${mysqlOpt} "SELECT sequencing_application.name FROM sequencing_application JOIN sequencing_subproject ON sequencing_subproject.application_id = sequencing_application.id WHERE sequencing_subproject.subproject_name = '${analysisId}'")
+				RappStats=$(mariadb ${mysqlOpt} "SELECT sequencing_application.name FROM sequencing_application JOIN sequencing_subproject ON sequencing_subproject.application_id = sequencing_application.id WHERE sequencing_subproject.subproject_name = '${analysisId}'")
 				echo "analysisId=\"${analysisId}\"" > ${anaDir}/${pedigree}/rawdata/${sample}/${sample}.reportSheet.conf
 				echo "sampleName=\"${sampleName}\"" >> ${anaDir}/${pedigree}/rawdata/${sample}/${sample}.reportSheet.conf
 				echo "RstartDate=\"${RstartDate}\"" >> ${anaDir}/${pedigree}/rawdata/${sample}/${sample}.reportSheet.conf
@@ -321,8 +323,8 @@
 			errLog="${anaDir}/ERROR.log"
 			app=$(grep -v "^#" ${analysisId}_samples_info.tsv | cut -f 7 | sort -u)
 			echo "# INFO - Submitting umipreprocessing ..." | tee -a ${launchLog}
-			apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
-			--define qos=marathon \
+			/software/Perl-bundle-CPAN/5.40.2-GCCcore-14.3.0/bin/tpage \
+			--define qos=normal \
 			--define cpu=1 \
 			--define mem=20000 \
 			--define time="167:55:00" \
@@ -349,8 +351,8 @@
 	jobLog="${anaDir}/${jobLab}.jobID.log"
 	errLog="${anaDir}/ERROR.log"
 	echo "# INFO - Submitting mvp ..." | tee -a ${launchLog}
-	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
-	--define qos=short \
+	/software/Perl-bundle-CPAN/5.40.2-GCCcore-14.3.0/bin/tpage \
+	--define qos=normal \
 	--define cpu=1 \
 	--define mem=8000 \
 	--define time="05:55:00" \

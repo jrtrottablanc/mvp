@@ -18,9 +18,9 @@ elif [ -z ${SUBPROJ} ]; then
 else
 	# lims_url = "http://172.16.10.26/lims/lims_q_2/?"
 	# lims_url = "https://lims.cnag.cat/lims/lims_q_2/?"	
-
+	module load MariaDB/11.8.3-GCC-14.3.0
 	echo -e "#Subproject\tSample_barcode\tCollaborator_Sex\tPCR_Sex\tCoverage_Sex"
-	mysql -h lims.internal.cnag.eu -u lims_ro -p4eCrrEG8 -D lims -B --column-names=0 -e \
+	mariadb --ssl=0 -h lims.internal.cnag.eu -u lims_ro -p4eCrrEG8 -D lims -B --column-names=0 -e \
 	"SELECT sequencing_subproject.subproject_name as subprojName,
 	sequencing_sample.barcode as sampBarcode,
 	sequencing_sample.sex as sampSex,

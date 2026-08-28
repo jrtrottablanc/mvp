@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -24,7 +25,7 @@ errLog="[% stepDir %]/ERROR.log"
 source [% confFile %]
 
 echo "# INFO - Converting BAM to FASTQ ..." >&2
-module load picard/2.26.10-Java-15 >&2
+module load picard/3.4.0-Java-17 >&2
 java -jar $EBROOTPICARD/picard.jar SamToFastq \
 I=[% input %] \
 FASTQ=[% levelId %]_1.fastq.gz \
@@ -41,6 +42,7 @@ jobCmd="[% stepDir %]/${jobLab}.cmd"
 jobLog="[% stepDir %]/${jobLab}.jobID.log"
 apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${t1k_qos} \
+--define part=${t1k_part} \
 --define cpu=${t1k_cpu} \
 --define mem=${t1k_mem} \
 --define time="${t1k_time}" \
@@ -63,6 +65,7 @@ jobCmd="[% stepDir %]/${jobLab}.cmd"
 jobLog="[% stepDir %]/${jobLab}.jobID.log"
 apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${t1k_qos} \
+--define part=${t1k_part} \
 --define cpu=${t1k_cpu} \
 --define mem=${t1k_mem} \
 --define time="${t1k_time}" \

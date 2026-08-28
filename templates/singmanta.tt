@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %] 
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -24,9 +25,9 @@ errLog="[% stepDir %]/ERROR.log"
 source [% confFile %]
 source ${funcDir}/candidateGenes.sh
 
-module purge >&2
-module use /software/dat/modules/all >&2
-module load manta/1.6.0-GCC-10.2.0-Python-2.7.18 >&2
+#module purge >&2
+#module use /software/dat/modules/all >&2
+#module load manta/1.6.0-GCC-10.2.0-Python-2.7.18 >&2
 
 # conf manta
 echo "# INFO - Configuring manta ..." >&2
@@ -35,7 +36,7 @@ if [ "[% app %]" = "WGS" ]; then
 else
         exomeFlag="--exome"
 fi
-configManta.py ${exomeFlag} \
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${mantaCont} configManta.py ${exomeFlag} \
 --referenceFasta ${fasta} \
 --callRegions ${mantaCallBed} \
 --runDir [% stepDir %] \
@@ -44,6 +45,7 @@ if [ $? != 0 ]; then echo "ERROR : singmanta [step#1] [${cmdFile}]" >> ${errLog}
 
 # run manta
 echo "# INFO - Running manta ..." >&2
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${mantaCont} \
 python [% stepDir %]/runWorkflow.py -m local -j [% cpu %]
 if [ $? != 0 ]; then echo "ERROR : singmanta [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
 
@@ -92,20 +94,19 @@ if [ "$(zgrep -v "^#" [% stepDir %]/results/variants/diploidSV.vcf.gz | wc -l)" 
 		if [ $? != 0 ]; then echo "ERROR : singmanta [step#5] [${cmdFile}]" >> ${errLog}; exit 1; fi
 		
 		# variantconvert
-		module purge >&2
-		module load Python/3.10.8 >&2
-		source /scratch_isilon/groups/dat/apps/VARIANTCONVERT/1.2.2/variantconvert_venv/bin/activate >&2
+		#module purge >&2
+		#module load Python/3.10.8 >&2
+		#source /scratch_isilon/groups/dat/apps/VARIANTCONVERT/1.2.2/variantconvert_venv/bin/activate >&2
 		export TMPDIR=/scratch_isilon/groups/dat/apps/MVPGermline/tmpdir
 		echo "# INFO - Creating visualization track ..." >&2
-		variantconvert convert \
+		apptainer exec --no-home --bind ${bindDir} ${contDir}/${variantconvertCont} variantconvert \
+		convert \
 		-i [% levelId %].manta.annot.tag.full.tsv \
 		-o [% levelId %].manta.annot.tag.full.vcf \
-		-fi AnnotSV \
-		-fo VCF \
 		-c ${confDir}/${var2trackManta}
 		if [ $? != 0 ]; then echo "ERROR : singmanta [step#6] [${cmdFile}]" >> ${errLog}; exit 1; fi
-		deactivate
-		module purge >&2
+		#deactivate
+		#module purge >&2
 
 		# VCF compress
 		echo "INFO - Compressing VCF ..." >&2

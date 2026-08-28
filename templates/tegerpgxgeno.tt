@@ -1,9 +1,10 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=<? excludeNode ?>
 #SBATCH --job-name=<? jobLab ?>
 #SBATCH --chdir=<? stepDir ?>
 #SBATCH --qos=<? qos ?>
-#SBATCH --partition=genD
+#SBATCH --partition=<? part ?>
 #SBATCH --requeue
 #SBATCH --output=<? jobLab ?>_%j.out
 #SBATCH --error=<? jobLab ?>_%j.err

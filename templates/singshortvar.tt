@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -23,9 +24,6 @@ errLog="[% stepDir %]/ERROR.log"
 
 source [% confFile %]
 
-#~ if [ "[% app %]" = "WGS" ]; then source ${confDir}/ressources_WGS.conf
-#~ else source ${confDir}/ressources_ROI.conf; fi
-
 #------------------#
 # annotshortvar    #
 #------------------#
@@ -39,6 +37,7 @@ for chr in ${chrList}; do
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${annotshortvar_qos} \
+	--define part=${annotshortvar_part} \
 	--define cpu=${annotshortvar_cpu} \
 	--define mem=${annotshortvar_mem} \
 	--define time="${annotshortvar_time}" \
@@ -67,6 +66,7 @@ jobCmd="${stepDir}/${jobLab}.cmd"
 jobLog="${stepDir}/${jobLab}.jobID.log"
 apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${gathervcf_qos} \
+--define part=${gathervcf_part} \
 --define cpu=${gathervcf_cpu} \
 --define mem=${gathervcf_mem} \
 --define time="${gathervcf_time}" \
@@ -99,6 +99,7 @@ if [ "${spliceaiDb}" != "NA" ]; then
 		jobLog="${stepDir}/${jobLab}.jobID.log"
 		apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 		--define qos=${spliceairun_qos} \
+		--define part=${spliceairun_part} \
 		--define cpu=${spliceairun_cpu} \
 		--define mem=${spliceairun_mem} \
 		--define time="${spliceairun_time}" \
@@ -127,6 +128,7 @@ if [ "${spliceaiDb}" != "NA" ]; then
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${gathervcf_qos} \
+	--define part=${gathervcf_part} \
 	--define cpu=${gathervcf_cpu} \
 	--define mem=${gathervcf_mem} \
 	--define time="${gathervcf_time}" \
@@ -152,44 +154,36 @@ fi
 #------------------#
 echo "# INFO - Submitting intervar ..." >&2
 if [ "${intervarDb}" != "NA" ]; then
-	module purge >&2
-	module load Python/3.9.6-GCCcore-11.2.0 >&2
-	module load SciPy-bundle/2021.10-foss-2021b >&2
-	source /scratch_isilon/groups/dat/apps/INTERVARTOOLS/intervartools_venv/bin/activate >&2
 	stepDir="[% stepDir %]/intervar"
 	mkdir -p ${stepDir} >&2
 	jobLab="[% levelId %]_runInterVar"
 	jobCmd="${stepDir}/${jobLab}.cmd"
 	jobLog="${stepDir}/${jobLab}.jobID.log"
-	/scratch_isilon/groups/dat/apps/INTERVARTOOLS/InterVarTools runInterVar \
+	apptainer exec --no-home --bind ${bindDir} \
+	--env PYTHONUSERBASE=/scratch_isilon/groups/dat/lib/Python/ \
+	${contDir}/${pythonscipyCont} \
+	python3 /scratch_isilon/groups/dat/apps/INTERVARTOOLS/InterVarTools runInterVar \
 	-I [% pedDir %]/gathervcfpreannot/[% levelId %]/[% levelId %].allchr.g.geno.norm.vcf.gz \
 	-B [% levelId %] \
 	-iv /opt/InterVar-2.2.1/Intervar.py \
 	-idp /scratch_isilon/groups/dat/data/Intervar/20220217/intervardb/ \
 	-adp /scratch_isilon/groups/dat/data/ANNOVAR/20220217/humandb/ \
-	-ct /scratch_isilon/groups/dat/apps/INTERVARTOOLS/ritv.jtt \
+	-ct /scratch_isilon/groups/dat/apps/INTERVARTOOLS/ritv_genE.jtt \
 	-r ${intervarDb} \
 	-iai ${contDir}/${intervarCont} \
 	-c ${intervarrun_cpu} \
-	-p genD \
+	-p [% part %] \
 	-t ${intervarrun_time} \
 	-q ${intervarrun_qos} \
 	-d ${stepDir} \
 	-en [% excludeNode %]
-
-# Below was testing for ONT
-#	-v /scratch_isilon/groups/dat/apps/INTERVARTOOLS/vcf2annovar_devel.py \
-#	-en [% excludeNode %]
-
 	if [ ! -z "[% gathervcfpreannotJobID %]" ]; then
 		intervarrunJobid=$(sbatch --dependency=afterok:[% gathervcfpreannotJobID %] --parsable ${jobCmd})
 	else
 		intervarrunJobid=$(sbatch --parsable ${jobCmd})
 	fi
 	if [ $? != 0 ]; then echo "ERROR : Cannot submit [${jobCmd}] [${cmdFile}]" >> ${errLog}; exit 1; fi
-	echo -e "${jobCmd}\t${intervarrunJobid}" | tee -a ${jobLog} >&2
-	deactivate
-	module purge >&2 
+	echo -e "${jobCmd}\t${intervarrunJobid}" | tee -a ${jobLog} >&2 
 else
 	echo "# INFO - Intervar database not available into configuration file [[% confFile %]], skipping intervar" >&2
 fi
@@ -206,6 +200,7 @@ if [ "${spliceaiDb}" != "NA" ]; then
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${spliceaiappend_qos} \
+	--define part=${spliceaiappend_part} \
 	--define cpu=${spliceaiappend_cpu} \
 	--define mem=${spliceaiappend_mem} \
 	--define time="${spliceaiappend_time}" \
@@ -230,6 +225,7 @@ else
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${fakeappend_qos} \
+	--define part=${fakeappend_part} \
 	--define cpu=${fakeappend_cpu} \
 	--define mem=${fakeappend_mem} \
 	--define time="${fakeappend_time}" \
@@ -258,6 +254,7 @@ if [ "${intervarDb}" != "NA" ]; then
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${intervarappend_qos} \
+	--define part=${intervarappend_part} \
 	--define cpu=${intervarappend_cpu} \
 	--define mem=${intervarappend_mem} \
 	--define time="${intervarappend_time}" \
@@ -283,6 +280,7 @@ else
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${fakeappend_qos} \
+	--define part=${fakeappend_part} \
 	--define cpu=${fakeappend_cpu} \
 	--define mem=${fakeappend_mem} \
 	--define time="${fakeappend_time}" \
@@ -310,6 +308,7 @@ jobCmd="${stepDir}/${jobLab}.cmd"
 jobLog="${stepDir}/${jobLab}.jobID.log"
 apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${tagfilt_qos} \
+--define part=${tagfilt_part} \
 --define cpu=${tagfilt_cpu} \
 --define mem=${tagfilt_mem} \
 --define time="${tagfilt_time}" \
@@ -337,6 +336,7 @@ jobCmd="${stepDir}/${jobLab}.cmd"
 jobLog="${stepDir}/${jobLab}.jobID.log"
 apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${vcf2tab_qos} \
+--define part=${vcf2tab_part} \
 --define cpu=${vcf2tab_cpu} \
 --define mem=${vcf2tab_mem} \
 --define time="${vcf2tab_time}" \
@@ -364,6 +364,7 @@ if [ -f [% pedDir %]/rawdata/[% levelId %]/[% levelId %].reportSheet.conf ]; the
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${reportmake_qos} \
+	--define part=${reportmake_part} \
 	--define cpu=${reportmake_cpu} \
 	--define mem=${reportmake_mem} \
 	--define time="${reportmake_time}" \
@@ -393,6 +394,7 @@ jobCmd="${stepDir}/${jobLab}.cmd"
 jobLog="${stepDir}/${jobLab}.jobID.log"
 apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${hardfilt_qos} \
+--define part=${hardfilt_part} \
 --define cpu=${hardfilt_cpu} \
 --define mem=${hardfilt_mem} \
 --define time="${hardfilt_time}" \
@@ -421,6 +423,7 @@ jobCmd="${stepDir}/${jobLab}.cmd"
 jobLog="${stepDir}/${jobLab}.jobID.log"
 apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${vcf2tab_qos} \
+--define part=${vcf2tab_part} \
 --define cpu=${vcf2tab_cpu} \
 --define mem=${vcf2tab_mem} \
 --define time="${vcf2tab_time}" \
@@ -448,6 +451,7 @@ if [ "${spliceairuncandigene}" = "T" ]; then
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${spliceairuncandigene_qos} \
+	--define part=${spliceairuncandigene_part} \
 	--define cpu=${spliceairuncandigene_cpu} \
 	--define mem=${spliceairuncandigene_mem} \
 	--define time="${spliceairuncandigene_time}" \
@@ -471,6 +475,7 @@ if [ "${spliceairuncandigene}" = "T" ]; then
 	jobLog="${stepDir}/${jobLab}.jobID.log"
 	apptainer run --no-home --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${vcf2tab_qos} \
+	--define part=${vcf2tab_part} \
 	--define cpu=${vcf2tab_cpu} \
 	--define mem=${vcf2tab_mem} \
 	--define time="${vcf2tab_time}" \

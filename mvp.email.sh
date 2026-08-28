@@ -18,7 +18,7 @@ CNAG - ${analysisId} Variant Analysis Results
 EMAIL ADDRESS
 TO :
 EOF
-mysql ${mysqlOpt} "SELECT c.email
+mariadb ${mysqlOpt} "SELECT c.email
 FROM sequencing_subproject s
 JOIN sequencing_subprojectcontactslist scl ON s.id = scl.subproject_id
 JOIN sequencing_contact c ON c.id = scl.contact_id
@@ -27,7 +27,7 @@ AND scl.pi = 1";
 cat << EOF	
 CC:
 EOF
-mysql ${mysqlOpt} "SELECT c.email
+mariadb ${mysqlOpt} "SELECT c.email
 FROM sequencing_subproject s
 JOIN sequencing_subprojectcontactslist scl ON s.id = scl.subproject_id
 JOIN sequencing_contact c ON c.id = scl.contact_id

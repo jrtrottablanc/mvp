@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -37,16 +38,18 @@ VCFsID=$(grep -v "^#" [% pedDir %]/[% levelId %]_samples_rawdata.tsv | cut -f 2 
 
 # run automap
 echo "# INFO - Running AutoMap ..." >&2
-module use /software/dat/modules/all >&2
-module load AutoMap/1.3 >&2
-AutoMap.sh \
+#module use /software/dat/modules/all >&2
+#module load AutoMap/1.3 >&2
+
+apptainer exec --no-home --bind ${bindDir} ${contDir}/${automapCont} \
+/scratch_isilon/groups/dat/apps/AUTOMAP/1.3/AutoMap/AutoMap_v1.3.sh \
 --vcf ${VCFsIN} \
 --id ${VCFsID} \
 --out [% stepDir %] \
 --genome ${rohautomapRef} \
 --common >&2
 if [ $? != 0 ]; then echo "ERROR : roh/automap [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
-module purge >&2
+#module purge >&2
 
 # cleaning
 echo "# INFO - Cleaning temporary files ..." >&2

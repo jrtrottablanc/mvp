@@ -1,8 +1,9 @@
 #!/bin/bash
+#SBATCH --account=sa_vcaa
 #SBATCH --exclude=[% excludeNode %]
 #SBATCH --job-name=[% jobLab %]
 #SBATCH --chdir=[% stepDir %]
-#SBATCH --partition=genD
+#SBATCH --partition=[% part %]
 #SBATCH --requeue
 #SBATCH --output=[% jobLab %]_%j.out 
 #SBATCH --error=[% jobLab %]_%j.err 
@@ -33,6 +34,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.casm ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_casm_qos} \
+--define part=${qcpi_casm_part} \
 --define cpu=${qcpi_casm_cpu} \
 --define mem=${qcpi_casm_mem} \
 --define time="${qcpi_casm_time}" \
@@ -57,6 +59,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.cism ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_cism_qos} \
+--define part=${qcpi_cism_part} \
 --define cpu=${qcpi_cism_cpu} \
 --define mem=${qcpi_cism_mem} \
 --define time="${qcpi_cism_time}" \
@@ -81,6 +84,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.cgcbm ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_cgcbm_qos} \
+--define part=${qcpi_cgcbm_part} \
 --define cpu=${qcpi_cgcbm_cpu} \
 --define mem=${qcpi_cgcbm_mem} \
 --define time="${qcpi_cgcbm_time}" \
@@ -105,6 +109,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.elc ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_elc_qos} \
+--define part=${qcpi_elc_part} \
 --define cpu=${qcpi_elc_cpu} \
 --define mem=${qcpi_elc_mem} \
 --define time="${qcpi_elc_time}" \
@@ -129,6 +134,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.cbdbc ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_cbdbc_qos} \
+--define part=${qcpi_cbdbc_part} \
 --define cpu=${qcpi_cbdbc_cpu} \
 --define mem=${qcpi_cbdbc_mem} \
 --define time="${qcpi_cbdbc_time}" \
@@ -153,6 +159,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.cogm ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_cogm_qos} \
+--define part=${qcpi_cogm_part} \
 --define cpu=${qcpi_cogm_cpu} \
 --define mem=${qcpi_cogm_mem} \
 --define time="${qcpi_cogm_time}" \
@@ -177,6 +184,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.cqym ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_cqym_qos} \
+--define part=${qcpi_cqym_part} \
 --define cpu=${qcpi_cqym_cpu} \
 --define mem=${qcpi_cqym_mem} \
 --define time="${qcpi_cqym_time}" \
@@ -201,6 +209,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.csam ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_csam_qos} \
+--define part=${qcpi_csam_part} \
 --define cpu=${qcpi_csam_cpu} \
 --define mem=${qcpi_csam_mem} \
 --define time="${qcpi_csam_time}" \
@@ -225,6 +234,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.mosdepth.eff ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_mosdepth_qos} \
+--define part=${qcpi_mosdepth_part} \
 --define cpu=${qcpi_mosdepth_cpu} \
 --define mem=${qcpi_mosdepth_mem} \
 --define time="${qcpi_mosdepth_time}" \
@@ -250,6 +260,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.alfred ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_alfred_qos} \
+--define part=${qcpi_alfred_part} \
 --define cpu=${qcpi_alfred_cpu} \
 --define mem=${qcpi_alfred_mem} \
 --define time="${qcpi_alfred_time}" \
@@ -276,6 +287,7 @@ if [ "[% app %]" = "WGS" ]; then
 	echo "# INFO - Submitting qcpi.indexcov ..." >&2
 	apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${qcpi_indexcov_qos} \
+	--define part=${qcpi_indexcov_part} \
 	--define cpu=${qcpi_indexcov_cpu} \
 	--define mem=${qcpi_indexcov_mem} \
 	--define time="${qcpi_indexcov_time}" \
@@ -300,6 +312,7 @@ if [ "[% app %]" = "WGS" ]; then
 	echo "# INFO - Submitting qcpi.cwgsm ..." >&2
 	apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${qcpi_cwgsm_qos} \
+	--define part=${qcpi_cwgsm_part} \
 	--define cpu=${qcpi_cwgsm_cpu} \
 	--define mem=${qcpi_cwgsm_mem} \
 	--define time="${qcpi_cwgsm_time}" \
@@ -326,6 +339,7 @@ else
 	echo "# INFO - Submitting qcpi.chsm ..." >&2
 	apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 	--define qos=${qcpi_chsm_qos} \
+	--define part=${qcpi_chsm_part} \
 	--define cpu=${qcpi_chsm_cpu} \
 	--define mem=${qcpi_chsm_mem} \
 	--define time="${qcpi_chsm_time}" \
@@ -366,6 +380,7 @@ jobLog="[% stepDir %]/${jobLab}.jobID.log"
 echo "# INFO - Submitting qcpi.multiqc ..." >&2
 apptainer run --bind ${bindDir} ${contDir}/${perlCont} tpage \
 --define qos=${qcpi_multiqc_qos} \
+--define part=${qcpi_multiqc_part} \
 --define cpu=${qcpi_multiqc_cpu} \
 --define mem=${qcpi_multiqc_mem} \
 --define time="${qcpi_multiqc_time}" \
