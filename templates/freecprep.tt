@@ -1,6 +1,8 @@
 [general]
 SambambaThreads = 2
 
+bedtools = /software/BEDTools/2.31.1-GCC-14.3.0/bin/bedtools
+
 chrLenFile = [% freecChrLen %]
 ploidy = [% freecPloidy %]
 

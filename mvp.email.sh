@@ -1,9 +1,10 @@
+module load MariaDB/11.8.3-GCC-14.3.0
+
 echo "# INFO - Analysis folder : [${anaDir}]"
 	
 	echo "# INFO - Step(s) required : [${step}]"
 	IFS=',' read -r -a stepuser <<< "${step}"
-	
-	mysqlOpt=" -h lims.internal.cnag.eu -u lims_ro -p4eCrrEG8 -D lims -B --column-names=0 -e "
+	mysqlOpt=" --ssl=0 -h lims.internal.cnag.eu -u lims_ro -p4eCrrEG8 -D lims -B --column-names=0 -e "
 	app=$(grep -v "^#" ${anaDir}/${analysisId}_samples_info.tsv | cut -f 7 | sort -u)
 	mvpdoc="CNAG_MVP_pipeline_GRCh38_v5_WGS.pdf"
 	if [ "$app" != "WGS" ]; then mvpdoc="NA"; fi
@@ -47,7 +48,7 @@ We have uploaded into our FTP the results of our variants analysis pipeline for 
 folder: ${analysisId}/YYYYMMDD
 
 You can access with free Windows GUI software such as WinSCP, or via the Unix command line using sftp.
-The data will remain available for two weeks; please let us know if you have not been able to download it within that period.
+The data will remain available for two months; please let us know if you have not been able to download it within that period.
 
 The results include:
 EOF

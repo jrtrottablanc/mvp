@@ -33,11 +33,11 @@ apptainer exec --bind ${bindDir} ${contDir}/${vepCont} vep \
 --everything \
 --check_existing \
 --individual all \
---plugin Condel,/scratch_isilon/groups/dat/jrtrotta/MATILLA/plugin,b,2 \
---dir_plugins /scratch_isilon/groups/dat/jrtrotta/MATILLA/plugin \
+--plugin Condel,${pipeDir}/data/MATILLA/plugin,b,2 \
+--dir_plugins ${pipeDir}/data/MATILLA/plugin \
 --no_stats \
 --offline \
---dir_cache /scratch_isilon/groups/dat/jrtrotta/MATILLA/vep_data \
+--dir_cache ${pipeDir}/data/MATILLA/vep_data \
 --assembly GRCh38 \
 --fasta /scratch_isilon/groups/dat/data/Organisms/Homo_sapiens/GRCh38.hl/fasta/hsapiens.GRCh38.hl.fasta \
 -o STDOUT \

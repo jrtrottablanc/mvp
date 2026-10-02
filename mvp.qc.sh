@@ -1,3 +1,5 @@
+module load MariaDB/11.8.3-GCC-14.3.0
+
 touch ${qcLog}
 	
 	echo "# INFO - Checking MVPGermline pipeline QC metrics [${now}] ..." | tee -a ${qcLog}
@@ -8,7 +10,7 @@ touch ${qcLog}
 	echo "# INFO - Generating LIMS QC link ..." | tee -a ${qcLog}
 	limsSubproj=$(${funcDir}/limsq -nh -sp ${analysisId} -lanepf fail,waiting,under_review | cut -d ";" -f 2 | sort -u)
 	if [ "${limsSubproj}" != "" ]; then
-		mysqlOpt=" -h lims.internal.cnag.eu -u lims_ro -p4eCrrEG8 -D lims -B --column-names=0 -e "
+		mysqlOpt=" --ssl=0 -h lims.internal.cnag.eu -u lims_ro -p4eCrrEG8 -D lims -B --column-names=0 -e "
 		subprojID=$(mariadb ${mysqlOpt} "SELECT id FROM sequencing_subproject WHERE subproject_name = '${analysisId}'")
 		echo "https://lims.cnag.cat/lims/subproject_sample_details/${subprojID}/" | tee -a ${qcLog}
 	else

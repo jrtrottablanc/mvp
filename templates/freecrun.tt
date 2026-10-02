@@ -18,6 +18,7 @@ printf START >&2; uptime >&2
 date >&2
 
 export LC_ALL=C
+export TMPDIR=/scratch_isilon/groups/dat/apps/MVPGermline/tmpdir
 
 cmdFile="[% stepDir %]/[% jobLab %].cmd"
 errLog="[% stepDir %]/ERROR.log"
@@ -91,9 +92,11 @@ else
 	if [ $? != 0 ]; then echo "ERROR : freec [step#1] [${cmdFile}]" >> ${errLog}; exit 1; fi
 
 	echo "# INFO - Running Control-Freec ..." >&2
+	bindDir='/shared,/scratch_isilon,/software'
 	apptainer exec --no-home --bind ${bindDir} ${contDir}/${freecCont} \
 	freec -conf [% levelId %].freec.conf.txt
 	if [ $? != 0 ]; then echo "ERROR : freec [step#2] [${cmdFile}]" >> ${errLog}; exit 1; fi
+	bindDir='/shared,/scratch_isilon'
 
 	# graph
 	echo "# INFO - Making graphs ..." >&2

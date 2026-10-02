@@ -249,14 +249,11 @@ if [ "${greenvRef}" != "NA" ]; then
 	export PATH="$PATH:/scratch_isilon/groups/dat/apps/NEXTFLOW/23.10"
 	source /scratch_isilon/groups/dat/apps/NEXTFLOW/23.10/nfcore_venv/bin/activate
 	nextflow /scratch_isilon/groups/dat/apps/GREEN-VARAN/1.3.2/workflow/main.nf \
+	-c /scratch_isilon/groups/dat/apps/GREEN-VARAN/1.3.2/genE.conf \
 	-profile singularity \
-	-process.queue [% part %] \
 	--input [% levelId %].[% chr %].g.geno.norm.ann.TMP.vcf.gz \
 	--build ${greenvRef} ${greenvChrParam} \
 	--out [% levelId %].[% chr %].greenVaran \
-	--scores best \
-	--regions best \
-	--AF \
 	--greenvaran_config /scratch_isilon/groups/dat/apps/GREEN-VARAN/1.3.2/config/prioritize_smallvars.json \
 	--greenvaran_dbschema /scratch_isilon/groups/dat/apps/GREEN-VARAN/1.3.2/config/greendb_schema_v2.5.json
 	if [ $? != 0 ]; then echo "ERROR : annotshortvar [step#5.1] [${cmdFile}]" >> ${errLog}; exit 1; fi
@@ -264,7 +261,7 @@ if [ "${greenvRef}" != "NA" ]; then
 
 	# copy results
 	echo "# INFO - Copying results ..." >&2
-	cp -v [% levelId %].[% chr %].greenVaran/[% levelId %].[% chr %].g.geno.norm.ann.TMP.annotated.vcf.gz \
+	cp -v [% levelId %].[% chr %].greenVaran/[% levelId %].[% chr %].g.geno.norm.ann.TMP.vcf.gz.annotated.vcf.gz \
 	[% levelId %].[% chr %].g.geno.norm.ann.vcf.gz
 	
 	# VCF indexes

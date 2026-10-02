@@ -42,7 +42,7 @@ grep -v "^#" ${stepdef} | while IFS=$'\t' read stepName stepDef stepSpecie stepA
 	printf "%-24s %-3s %s %s %s %s %s\n" "${stepName}" ":" "${stepDef}" "-" "${stepSpecie}" "-" "${stepApp}"
 done
 echo
-printf "%-24s %-3s %s\n" "all" ":" "Run all steps, except allshortvar, gutierrezsarprs and tegerpgxgeno"
+printf "%-24s %-3s %s\n" "all" ":" "Run all steps, except allshortvar, qcpi, matillavep, gutierrezsarprs and tegerpgxgeno"
 cat << EOF
 
 #-------------------------------#
@@ -93,11 +93,20 @@ if [[ ! " ${knowntask[*]} " =~ " ${task} " ]]; then
 fi
 
 # step
-if [ "${ustep}" = "all" ]; then
-	step=$(grep -v "^#" ${stepdef} | while IFS=$'\t' read stepName stepDef stepSpecie stepApp stepResult stepCond stepAll; do if [ "${stepAll}" = "yes" ]; then echo ${stepName}; fi ; done | paste -d"," -s -)
-else
-	step="${ustep}"
-fi
+IFS=',' read -ra requested_steps <<< "${ustep}"
+step_list=()
+for requested in "${requested_steps[@]}"; do
+	if [ "${requested}" = "all" ]; then
+		while IFS=$'\t' read -r stepName stepDef stepSpecie stepApp stepResult stepCond stepAll; do
+			if [ "${stepAll}" = "yes" ]; then
+				step_list+=("${stepName}")
+			fi
+		done < <(grep -v "^#" "${stepdef}")
+	else
+		step_list+=("${requested}")
+	fi
+done
+step=$(IFS=','; echo "${step_list[*]}")
 IFS=',' read -r -a stepuser <<< "${step}"
 steptaskcsv=$(grep -v "^#" ${taskdef} | while IFS=$'\t' read taskName taskDef taskStep; do if [ "${taskStep}" != "no step required" ]; then echo ${taskName}; fi ; done | paste -d"," -s -)
 IFS=',' read -r -a steptask <<< "${steptaskcsv}"
@@ -231,7 +240,7 @@ dateResults=$(date +"%Y%m%d")
 
 # other configuration
 source ${confDir}/containers.conf
-excludeNode=$(cat /home/jrtrotta/excludeNode.txt)
+excludeNode=$(cat ${pipeDir}/excludeNode.txt)
 
 # get task sub
 case "${task}" in

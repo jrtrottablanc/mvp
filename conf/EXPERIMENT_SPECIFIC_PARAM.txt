@@ -1,0 +1,20 @@
+# Default configuration files: hsqpeins.GRCh38.conf
+# The following paramaters have to be specified into the input mvp's configuration file
+# They will overwrite the default parameters
+
+# GUTIERREZSAR
+spliceaiDb="NA"
+spliceairuncandigene="T"
+annotsvAnnotDir="/scratch_isilon/groups/dat/apps/ANNOTSV/3.4.4_IMPACT_EXTERNAL"
+
+# IMPACT
+greenvRef="NA"
+annotsvAnnotDirIntFreq="/scratch_isilon/groups/dat/apps/ANNOTSV/3.4.4_IMPACT"
+annotsvAnnotPost="/scratch_isilon/groups/dat/apps/MVPGermline/20260801/AnnotsvIntFreq.sh"
+
+# IMPACTRD
+greenvRef="NA"
+annotsvAnnotDirIntFreq="/scratch_isilon/groups/dat/apps/ANNOTSV/3.4.4_IMPACT"
+annotsvAnnotPost="/scratch_isilon/groups/dat/apps/MVPGermline/20260801/AnnotsvIntFreq.sh"
+stripyCatalog="/scratch_isilon/groups/dat/apps/STRIPY-PIPELINE/2.5/catalogIMPACT.json"
+stripyGene="CBL,FGF14"
